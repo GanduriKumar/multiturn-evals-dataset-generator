@@ -1,0 +1,20 @@
+templates:
+  - workflow: LostStolenCard
+    speaker: user
+    role: customer
+    behaviour: EmotionallyCharged
+    axes:
+      risk_level: high
+    text: "I think my card was stolen and there are charges I don't recognize."
+  - workflow: BalanceInquiry
+    speaker: user
+    role: customer
+    behaviour: HappyPath
+    axes:
+      account_type: checking
+    text: "What's my current checking balance?"
+  - workflow: PINReset
+    speaker: user
+    role: customer
+    behaviour: ImpatientUser
+    text: "I forgot my PIN. Reset it now."

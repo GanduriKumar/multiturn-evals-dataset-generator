@@ -1,0 +1,7 @@
+axes:
+  intent:
+    - refund
+    - exchange
+  channel:
+    - web
+    - mobile

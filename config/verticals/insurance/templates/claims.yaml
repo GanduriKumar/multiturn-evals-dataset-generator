@@ -1,0 +1,21 @@
+templates:
+  - workflow: ClaimFiling
+    speaker: user
+    role: policyholder
+    behaviour: HappyPath
+    axes:
+      claim_urgency: med
+      coverage_status: covered
+    text: "I need to file a claim for recent damage to my car."
+  - workflow: CoverageCheck
+    speaker: user
+    role: policyholder
+    behaviour: AmbiguousQueries
+    axes:
+      policy_type: auto
+    text: "Is this kind of accident covered?"
+  - workflow: PolicyCancellation
+    speaker: user
+    role: policyholder
+    behaviour: UserCorrections
+    text: "Actually, I want to cancel my policy starting next month."

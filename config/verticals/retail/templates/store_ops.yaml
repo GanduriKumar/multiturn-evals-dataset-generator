@@ -1,0 +1,22 @@
+templates:
+  - workflow: ProductDiscovery
+    speaker: user
+    role: shopper
+    behaviour: HappyPath
+    axes:
+      price_sensitivity: med
+    text: "I'm looking for a mid-range blender. What do you recommend?"
+  - workflow: ReturnsExchanges
+    speaker: user
+    role: shopper
+    behaviour: UserCorrections
+    axes:
+      return_window: within_window
+    text: "I want to exchange a shirt I bought last week for a different size."
+  - workflow: StoreAvailability
+    speaker: user
+    role: shopper
+    behaviour: AmbiguousQueries
+    axes:
+      availability: limited
+    text: "Is this item available at my local store?"

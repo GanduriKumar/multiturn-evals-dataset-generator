@@ -1,0 +1,22 @@
+templates:
+  - workflow: OutageReport
+    speaker: user
+    role: subscriber
+    behaviour: EmotionallyCharged
+    axes:
+      network_status: outage
+    text: "My internet is completely down right now. What is going on?"
+  - workflow: PlanChange
+    speaker: user
+    role: subscriber
+    behaviour: HappyPath
+    axes:
+      plan_type: postpaid
+    text: "I'd like to switch to a plan with more data."
+  - workflow: BillingDispute
+    speaker: user
+    role: subscriber
+    behaviour: ConstraintHeavyQueries
+    axes:
+      contract_status: month_to_month
+    text: "My bill is higher than expected and I need a breakdown."

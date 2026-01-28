@@ -1,0 +1,21 @@
+templates:
+  - workflow: AppointmentScheduling
+    speaker: user
+    role: patient
+    behaviour: HappyPath
+    axes:
+      urgency: routine
+      visit_type: new_patient
+    text: "I'd like to schedule a routine appointment with a new primary care doctor."
+  - workflow: PrescriptionRefill
+    speaker: user
+    role: patient
+    behaviour: LowContext
+    text: "I need a refill for my prescription."
+  - workflow: BillingInquiry
+    speaker: user
+    role: patient
+    behaviour: ConstraintHeavyQueries
+    axes:
+      insurance_status: insured
+    text: "Can you explain this charge on my bill?"

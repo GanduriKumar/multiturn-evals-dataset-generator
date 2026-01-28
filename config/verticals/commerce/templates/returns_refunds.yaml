@@ -1,0 +1,22 @@
+templates:
+  - workflow: ReturnsRefundsExchanges
+    speaker: user
+    role: customer
+    behaviour: HappyPath
+    axes:
+      policy_boundary: allowed
+    text: "I want to return a {item_condition} item I bought. Is it within the return policy?"
+  - workflow: OrderStatusTracking
+    speaker: user
+    role: customer
+    behaviour: LowContext
+    axes:
+      delivery_speed: standard
+    text: "Where is my order?"
+  - workflow: ProductAvailability
+    speaker: user
+    role: customer
+    behaviour: ConstraintHeavyQueries
+    axes:
+      availability: out_of_stock
+    text: "Do you have this item in stock in {channel}?"

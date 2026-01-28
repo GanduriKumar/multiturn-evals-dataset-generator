@@ -1,0 +1,12 @@
+templates:
+  - workflow: DemoWorkflow
+    speaker: user
+    role: customer
+    behaviour: HappyPath
+    axes:
+      intent: refund
+    text: "Hi {customer_name}, I need a refund for my order placed via {channel}."
+  - workflow: DemoWorkflow
+    speaker: user
+    role: customer
+    text: "Hello, I need help with my order."
