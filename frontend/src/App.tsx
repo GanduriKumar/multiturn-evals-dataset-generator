@@ -112,6 +112,22 @@ function App() {
     [axesSelections, selectedBehaviours, selectedWorkflows, vertical],
   )
 
+  const scenarioCombinationCount = useMemo(() => {
+    const entries = Object.values(axesSelections)
+    if (entries.length === 0) return 1
+    return entries.reduce((total, values) => {
+      const count = Array.isArray(values) ? values.length : 0
+      return total * (count > 0 ? count : 1)
+    }, 1)
+  }, [axesSelections])
+
+  const selectedScenarioCount = useMemo(() => {
+    return Object.values(axesSelections).reduce((total, values) => {
+      if (!Array.isArray(values)) return total
+      return total + values.length
+    }, 0)
+  }, [axesSelections])
+
   const presetPrefix = useMemo(() => `eval_preset_${vertical}_`, [vertical])
 
   const refreshPresetList = () => {
@@ -161,6 +177,23 @@ function App() {
   useEffect(() => {
     refreshPresetList()
   }, [presetPrefix])
+
+  useEffect(() => {
+    const stored = localStorage.getItem('generated_datasets')
+    if (!stored) return
+    try {
+      const parsed = JSON.parse(stored) as string[]
+      if (Array.isArray(parsed)) {
+        setGeneratedDatasets(parsed)
+      }
+    } catch {
+      return
+    }
+  }, [])
+
+  useEffect(() => {
+    localStorage.setItem('generated_datasets', JSON.stringify(generatedDatasets))
+  }, [generatedDatasets])
 
   useEffect(() => {
     // Load turn settings from localStorage
@@ -386,10 +419,12 @@ function App() {
                 <div className="mt-3 space-y-2 text-sm text-[#5F6368]">
                   <div>Workflows: {selectedWorkflows.length}</div>
                   <div>Behaviours: {selectedBehaviours.length || 1}</div>
+                  <div>Selected scenarios: {selectedScenarioCount}</div>
                   <div>Turns per conversation: {minTurns}-{maxTurns}</div>
                   <div className="pt-2 border-t border-[#E5E7EB]">
                     <div className="font-medium text-[#202124]">
-                      Total conversations: {selectedWorkflows.length * (selectedBehaviours.length || 1)}
+                      Total conversations:{' '}
+                      {selectedWorkflows.length * (selectedBehaviours.length || 1) * scenarioCombinationCount}
                     </div>
                   </div>
                 </div>
@@ -514,7 +549,7 @@ function App() {
                       className="w-full rounded border border-[#E5E7EB] bg-white p-1 text-xs"
                       disabled={!downloadUrl}
                     >
-                      <option value="json">JSON (JSONL)</option>
+                      <option value="json">JSON</option>
                       <option value="csv">CSV</option>
                     </select>
                     <button
