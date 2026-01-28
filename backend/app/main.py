@@ -1,5 +1,6 @@
 import io
 import json
+import logging
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
@@ -9,6 +10,8 @@ from .models import IndustryVertical, VerticalConfigResponse
 from .scoring import score_dataset
 
 app = FastAPI(title="Eval Dataset Generator")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("eval_dataset_generator")
 
 
 @app.get("/health")
@@ -24,6 +27,19 @@ def get_vertical_config(vertical: IndustryVertical) -> VerticalConfigResponse:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    logger.info(
+        "vertical_config_loaded %s",
+        json.dumps(
+            {
+                "vertical": vertical.value,
+                "workflows": payload["workflows"],
+                "behaviours": payload["behaviours"],
+                "axes": payload["axes"],
+            },
+            ensure_ascii=False,
+        ),
+    )
 
     return VerticalConfigResponse(
         vertical=vertical,
