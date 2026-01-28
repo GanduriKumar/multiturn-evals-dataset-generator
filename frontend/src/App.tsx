@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
 import JSZip from 'jszip'
 
 type VerticalConfig = {
@@ -26,7 +25,7 @@ function App() {
   const [config, setConfig] = useState<VerticalConfig | null>(null)
   const [selectedWorkflows, setSelectedWorkflows] = useState<string[]>([])
   const [selectedBehaviours, setSelectedBehaviours] = useState<string[]>([])
-  const [axesSelections, setAxesSelections] = useState<Record<string, string>>({})
+  const [axesSelections, setAxesSelections] = useState<Record<string, string[]>>({})
   const [generatedDatasets, setGeneratedDatasets] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -40,8 +39,6 @@ function App() {
   const [behaviourSchemaFile, setBehaviourSchemaFile] = useState<File | null>(null)
   const [axesSchemaFile, setAxesSchemaFile] = useState<File | null>(null)
   const [downloadFormat, setDownloadFormat] = useState<'json' | 'csv'>('json')
-  const [generationProgress, setGenerationProgress] = useState(0)
-  const [isPaused, setIsPaused] = useState(false)
   const [minTurns, setMinTurns] = useState(5)
   const [maxTurns, setMaxTurns] = useState(9)
   const [selectedDataset, setSelectedDataset] = useState<string | null>(null)
@@ -64,9 +61,9 @@ function App() {
         setConfig(payload)
         setSelectedWorkflows([])
         setSelectedBehaviours([])
-        const defaults: Record<string, string> = {}
+        const defaults: Record<string, string[]> = {}
         Object.entries(payload.axes ?? {}).forEach(([axis, values]) => {
-          defaults[axis] = values[0] ?? ''
+          defaults[axis] = values[0] ? [values[0]] : []
         })
         setAxesSelections(defaults)
       } catch (err) {
@@ -146,7 +143,7 @@ function App() {
       const parsed = JSON.parse(stored) as {
         workflows?: string[]
         behaviours?: string[]
-        axes?: Record<string, string>
+        axes?: Record<string, string[]>
       }
       setSelectedWorkflows(parsed.workflows ?? [])
       setSelectedBehaviours(parsed.behaviours ?? [])
@@ -238,8 +235,6 @@ function App() {
     }
     setGenerateError(null)
     setIsGenerating(true)
-    setGenerationProgress(0)
-    setIsPaused(false)
     abortControllerRef.current = new AbortController()
 
     try {
@@ -255,21 +250,11 @@ function App() {
         formData.append('axes_schema', axesSchemaFile)
       }
 
-      // Simulate progress updates while waiting for response
-      const progressInterval = setInterval(() => {
-        setGenerationProgress((prev) => {
-          if (prev >= 90) return prev
-          return prev + Math.random() * 20
-        })
-      }, 500)
-
       const response = await fetch('/generate-dataset', {
         method: 'POST',
         body: formData,
         signal: abortControllerRef.current.signal,
       })
-
-      clearInterval(progressInterval)
 
       if (!response.ok) {
         const text = await response.text()
@@ -288,8 +273,18 @@ function App() {
       setDownloadUrl(nextUrl)
       setDownloadName(filename)
       setZipFileData(blob)
-      setGeneratedDatasets(['eval_dataset.jsonl', 'golden_dataset.jsonl', 'manifest.json'])
-      setGenerationProgress(100)
+      
+      // Extract filenames from ZIP
+      try {
+        const zip = new JSZip()
+        const zipData = await zip.loadAsync(blob)
+        const filenames = Object.keys(zipData.files).filter(name => !zipData.files[name].dir)
+        setGeneratedDatasets(filenames)
+      } catch (err) {
+        console.error('Error reading ZIP contents:', err)
+        setGeneratedDatasets(['manifest.json'])
+      }
+      
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
         setGenerateError('Generation aborted')
@@ -298,24 +293,6 @@ function App() {
       }
     } finally {
       setIsGenerating(false)
-      setIsPaused(false)
-    }
-  }
-
-  const pauseGeneration = () => {
-    setIsPaused(true)
-  }
-
-  const resumeGeneration = () => {
-    setIsPaused(false)
-  }
-
-  const abortGeneration = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort()
-      setIsGenerating(false)
-      setIsPaused(false)
-      setGenerationProgress(0)
     }
   }
 
@@ -422,134 +399,100 @@ function App() {
             <div className="mt-6 grid gap-3 md:grid-cols-4">
               <div className="rounded-lg border border-[#E5E7EB] bg-white p-3 shadow">
                 <h2 className="text-xs font-semibold text-[#202124]">Workflows</h2>
-                <div className="mt-2 max-h-48 overflow-y-auto grid gap-1">
+                <p className="text-xs text-[#5F6368] mt-1">Hold Ctrl/Cmd to select multiple</p>
+                <select
+                  multiple
+                  className="mt-2 w-full h-48 rounded border border-[#E5E7EB] bg-white p-2 text-xs shadow-sm focus:border-[#4285F4] focus:outline-none focus:ring-1 focus:ring-[#4285F4]"
+                  value={selectedWorkflows}
+                  onChange={(e) => {
+                    const options = Array.from(e.target.selectedOptions, option => option.value)
+                    setSelectedWorkflows(options)
+                  }}
+                >
                   {(config?.workflows ?? []).map((workflow) => (
-                    <label
-                      key={workflow}
-                      className="flex items-center gap-1 text-xs text-[#202124]"
-                    >
-                      <input
-                        type="checkbox"
-                        className="h-3 w-3 rounded border-gray-300 text-[#4285F4]"
-                        checked={selectedWorkflows.includes(workflow)}
-                        onChange={() =>
-                          toggleSelection(workflow, selectedWorkflows, setSelectedWorkflows)
-                        }
-                      />
-                      <span>{workflow}</span>
-                    </label>
+                    <option key={workflow} value={workflow} className="py-1">
+                      {workflow}
+                    </option>
                   ))}
-                  {!config && (
-                    <p className="text-sm text-[#5F6368]">
-                      Select a vertical to view workflows.
-                    </p>
-                  )}
-                </div>
+                </select>
+                {!config && (
+                  <p className="text-sm text-[#5F6368] mt-2">
+                    Select a vertical to view workflows.
+                  </p>
+                )}
               </div>
 
               <div className="rounded-lg border border-[#E5E7EB] bg-white p-3 shadow">
                 <h2 className="text-xs font-semibold text-[#202124]">Behaviours</h2>
-                <div className="mt-2 max-h-48 overflow-y-auto grid gap-1">
+                <p className="text-xs text-[#5F6368] mt-1">Hold Ctrl/Cmd to select multiple</p>
+                <select
+                  multiple
+                  className="mt-2 w-full h-48 rounded border border-[#E5E7EB] bg-white p-2 text-xs shadow-sm focus:border-[#4285F4] focus:outline-none focus:ring-1 focus:ring-[#4285F4]"
+                  value={selectedBehaviours}
+                  onChange={(e) => {
+                    const options = Array.from(e.target.selectedOptions, option => option.value)
+                    setSelectedBehaviours(options)
+                  }}
+                >
                   {(config?.behaviours ?? []).map((behaviour) => (
-                    <label
-                      key={behaviour}
-                      className="flex items-center gap-1 text-xs text-[#202124]"
-                    >
-                      <input
-                        type="checkbox"
-                        className="h-3 w-3 rounded border-gray-300 text-[#4285F4]"
-                        checked={selectedBehaviours.includes(behaviour)}
-                        onChange={() =>
-                          toggleSelection(behaviour, selectedBehaviours, setSelectedBehaviours)
-                        }
-                      />
-                      <span>{behaviour}</span>
-                    </label>
+                    <option key={behaviour} value={behaviour} className="py-1">
+                      {behaviour}
+                    </option>
                   ))}
-                  {!config && (
-                    <p className="text-sm text-[#5F6368]">
-                      Select a vertical to view behaviours.
-                    </p>
-                  )}
-                </div>
+                </select>
+                {!config && (
+                  <p className="text-sm text-[#5F6368] mt-2">
+                    Select a vertical to view behaviours.
+                  </p>
+                )}
               </div>
 
               <div className="rounded-lg border border-[#E5E7EB] bg-white p-3 shadow">
                 <h2 className="text-xs font-semibold text-[#202124]">Scenarios</h2>
-                <div className="mt-2 max-h-48 overflow-y-auto grid gap-2">
-                  {axesEntries.map(([axis, values]) => (
-                    <div key={axis} className="flex flex-col gap-1">
-                      <label className="text-xs font-medium text-[#202124]">{axis}</label>
-                      <select
-                        className="rounded border border-[#E5E7EB] bg-white p-1 text-xs shadow-sm"
-                        value={axesSelections[axis] ?? ''}
-                        onChange={(event) =>
-                          setAxesSelections((prev) => ({
-                            ...prev,
-                            [axis]: event.target.value,
-                          }))
-                        }
-                      >
-                        {values.map((value) => (
-                          <option key={value} value={value}>
-                            {value}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  ))}
-                  {!config && (
-                    <p className="text-sm text-[#5F6368]">Select a vertical to view scenarios.</p>
+                <p className="text-xs text-[#5F6368] mt-1">Hold Ctrl/Cmd to select values (multiple per axis)</p>
+                <select
+                  multiple
+                  size={10}
+                  className="mt-2 w-full h-48 rounded border border-[#E5E7EB] bg-white p-2 text-xs shadow-sm focus:border-[#4285F4] focus:outline-none focus:ring-1 focus:ring-[#4285F4]"
+                  value={Object.entries(axesSelections).flatMap(([axis, values]) =>
+                    values.map((value) => `${axis}:${value}`),
                   )}
-                </div>
+                  onChange={(e) => {
+                    const selected = Array.from(e.target.selectedOptions, option => option.value)
+                    const newSelections: Record<string, string[]> = {}
+                    selected.forEach(item => {
+                      const [axis, value] = item.split(':')
+                      if (!newSelections[axis]) {
+                        newSelections[axis] = []
+                      }
+                      if (!newSelections[axis].includes(value)) {
+                        newSelections[axis].push(value)
+                      }
+                    })
+                    setAxesSelections(newSelections)
+                  }}
+                >
+                  {axesEntries.map(([axis, values]) => (
+                    <optgroup key={axis} label={axis} className="font-semibold">
+                      {values.map((value) => (
+                        <option key={`${axis}:${value}`} value={`${axis}:${value}`} className="py-1 pl-3">
+                          {value}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+                {!config && (
+                  <p className="text-sm text-[#5F6368] mt-2">Select a vertical to view scenarios.</p>
+                )}
               </div>
 
               <div className="rounded-lg border border-[#E5E7EB] bg-white p-3 shadow">
                 <h2 className="text-xs font-semibold text-[#202124]">Generate & Download</h2>
                 
                 {isGenerating && (
-                  <div className="mt-3 flex flex-col items-center gap-3">
-                    <ResponsiveContainer width="100%" height={120}>
-                      <PieChart>
-                        <Pie
-                          data={[
-                            { name: 'Progress', value: generationProgress },
-                            { name: 'Remaining', value: 100 - generationProgress },
-                          ]}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={35}
-                          outerRadius={55}
-                          dataKey="value"
-                          startAngle={90}
-                          endAngle={-270}
-                        >
-                          <Cell fill="#4285F4" />
-                          <Cell fill="#E5E7EB" />
-                        </Pie>
-                      </PieChart>
-                    </ResponsiveContainer>
-                    <div className="text-center">
-                      <p className="text-xs font-semibold text-[#202124]">{Math.round(generationProgress)}%</p>
-                      <p className="text-xs text-[#5F6368]">{isPaused ? 'Paused' : 'Generating'}</p>
-                    </div>
-                    
-                    <div className="mt-2 grid w-full grid-cols-3 gap-1">
-                      <button
-                        type="button"
-                        onClick={isPaused ? resumeGeneration : pauseGeneration}
-                        className="rounded bg-[#FBBC05] px-2 py-1 text-xs font-medium text-white hover:bg-[#F9A825]"
-                      >
-                        {isPaused ? 'Resume' : 'Pause'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={abortGeneration}
-                        className="rounded bg-[#EA4335] px-2 py-1 text-xs font-medium text-white hover:bg-[#D33425]"
-                      >
-                        Abort
-                      </button>
-                    </div>
+                  <div className="mt-3 space-y-2 text-xs text-[#5F6368]">
+                    <p className="text-center font-semibold text-[#202124]">Generating…</p>
                   </div>
                 )}
 

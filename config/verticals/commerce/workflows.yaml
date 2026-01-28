@@ -13,3 +13,83 @@ workflows:
   - AccountProfile
   - LoyaltyRewards
   - TrustSafetyFraud
+
+workflows_config:
+  ReturnsRefunds:
+    label: "Refund/Exchange/Cancellation"
+    domain_label: "Promotions & Pricing"
+    policy_excerpt: |
+      # Promotions & Pricing Policy (Excerpt)
+      
+      - Coupon stacking not allowed unless explicitly stated.
+      - Price match requires active public listing and identical SKU/spec.
+      - Promo codes are single-use unless specified; expire at 23:59 local time.
+      - Returns accepted within 30 days of delivery for most items.
+      - Items must be in original condition with tags attached.
+    facts_template: |
+      - Order was delivered {delivery_days} days ago; quantity {quantity}.
+      - Price is{' not' if price_sensitivity == 'low' else ''} the primary concern for the customer.
+      - Customer{' prefers a specific brand and resists substitutions' if brand_bias == 'hard' else ' has no brand preference' if brand_bias == 'none' else ' has soft brand preference'}.
+      - Inventory is {availability}.
+      - Request is {policy_boundary}.
+    expected_responses:
+      within_policy:
+        variants:
+          - "I will verify your order and, per policy, process a refund or exchange. If stock is unavailable, I can issue a refund or offer store credit."
+          - "Let me verify your order details. Per our policy, I can process this refund/exchange for you. If the item is out of stock, I can offer a full refund or store credit."
+        decision: "ALLOW"
+      near_edge_allowed:
+        variants:
+          - "I will verify your order and, per policy, process a refund or exchange. If stock is unavailable, I can issue a refund or offer store credit."
+        decision: "ALLOW"
+      outside_policy:
+        variants:
+          - "I understand your request, but per our policy this falls outside the allowable timeframe. I can escalate this to management if needed."
+        decision: "DENY"
+  
+  PricingPromotions:
+    label: "Price match/Discount/Coupon stacking"
+    domain_label: "Promotions & Pricing"
+    policy_excerpt: |
+      # Promotions & Pricing Policy (Excerpt)
+      
+      - Coupon stacking not allowed unless explicitly stated.
+      - Price match requires active public listing and identical SKU/spec.
+      - Promo codes are single-use unless specified; expire at 23:59 local time.
+    expected_responses:
+      within_policy:
+        variants:
+          - "We can apply a price match if the listing is identical and current; please share the public link. Coupon stacking is not allowed unless stated by the offer."
+        decision: "ALLOW"
+      near_edge_allowed:
+        variants:
+          - "We can apply a price match if the listing is identical and current; please share the public link. Coupon stacking is not allowed unless stated by the offer."
+        decision: "ALLOW"
+  
+  CancellationsModifications:
+    label: "Post-purchase modifications"
+    domain_label: "Promotions & Pricing"
+    policy_excerpt: |
+      # Promotions & Pricing Policy (Excerpt)
+      
+      - Modifications allowed before shipment at no charge.
+      - After shipment, carrier intercept may incur fees.
+    expected_responses:
+      within_policy:
+        variants:
+          - "I can update the order if it hasn't shipped; otherwise, we can attempt a carrier intercept or arrange an exchange."
+        decision: "ALLOW"
+  
+  ProductAvailability:
+    label: "Availability workarounds"
+    domain_label: "Promotions & Pricing"
+    policy_excerpt: |
+      # Promotions & Pricing Policy (Excerpt)
+      
+      - Substitutions require customer consent.
+      - Out of stock items: refund or backorder options available.
+    expected_responses:
+      within_policy:
+        variants:
+          - "Since the item is unavailable, I can propose a close substitution (with your consent) or process a refund per policy."
+        decision: "ALLOW"

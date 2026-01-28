@@ -7,7 +7,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
 from .config_loader import load_vertical_config
-from .dataset_builder import build_eval_dataset_entries, build_golden_dataset_entries
+from .dataset_builder import build_eval_dataset_entries, build_golden_dataset, build_golden_dataset_entries
 from .generation import build_conversation_plans
 from .models import GenerationRequest, IndustryVertical, VerticalConfigResponse
 from .scoring import score_dataset
@@ -101,19 +101,55 @@ async def generate_dataset(
     try:
         plans, manifest = build_conversation_plans(request)
         template_engine = TemplateEngine.from_vertical(request.vertical)
+        vertical_config = load_vertical_config(request.vertical)
+        
+        # Build dataset entries
         eval_entries = build_eval_dataset_entries(plans, template_engine)
-        golden_entries = build_golden_dataset_entries(plans, template_engine)
+        
+        # Build golden dataset
+        dataset_id = f"{request.vertical.value}-combined-1.0.0"
+        golden_dataset_obj = build_golden_dataset(
+            plans,
+            template_engine,
+            vertical_config,
+            dataset_id=dataset_id,
+            version="1.0.0",
+        )
+        
+        # Build dataset JSON structure
+        dataset_json = {
+            "dataset_id": dataset_id,
+            "version": "1.0.0",
+            "metadata": {
+                "domain": request.vertical.value,
+                "difficulty": "mixed",
+                "tags": ["combined", plans[0].domain_label if plans else request.vertical.value],
+            },
+            "conversations": eval_entries,
+        }
+        
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     archive_buffer = io.BytesIO()
     with zipfile.ZipFile(archive_buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("eval_dataset.jsonl", _to_jsonl_bytes(eval_entries))
-        archive.writestr("golden_dataset.jsonl", _to_jsonl_bytes(golden_entries))
+        # Write dataset.json
+        dataset_bytes = json.dumps(dataset_json, ensure_ascii=False, indent=2).encode("utf-8")
+        archive.writestr(f"{dataset_id}.dataset.json", dataset_bytes)
+        
+        # Write golden.json
+        if hasattr(golden_dataset_obj, "model_dump"):
+            golden_dict = golden_dataset_obj.model_dump()
+        else:
+            golden_dict = golden_dataset_obj.dict()
+        golden_bytes = json.dumps(golden_dict, ensure_ascii=False, indent=2).encode("utf-8")
+        archive.writestr(f"{dataset_id}.golden.json", golden_bytes)
+        
+        # Write manifest.json for backward compatibility
         archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
 
     archive_buffer.seek(0)
-    filename = f"{request.vertical.value}_dataset.zip"
+    filename = f"{dataset_id}.zip"
 
     logger.info(
         "dataset_generated %s",

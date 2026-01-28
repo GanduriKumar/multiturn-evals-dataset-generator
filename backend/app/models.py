@@ -33,7 +33,7 @@ class GenerationRequest(BaseModel):
     vertical: IndustryVertical
     workflows: List[str] = Field(min_length=1)
     behaviours: List[BehaviourFlag] = Field(default_factory=list)
-    axes: Dict[str, str] = Field(default_factory=dict)
+    axes: Dict[str, List[str]] = Field(default_factory=dict)
     num_samples_per_combo: int = Field(default=1, ge=1)
     language_locale: str = Field(default="en-US")
     channel: str = Field(default="web")
@@ -56,3 +56,26 @@ class ConversationPlan(BaseModel):
     behaviours: List[BehaviourFlag] = Field(default_factory=list)
     axes: Dict[str, str] = Field(default_factory=dict)
     turn_plan: List[Dict[str, Any]] = Field(default_factory=list)
+    domain_label: str = Field(default="")
+    behavior_label: str = Field(default="")
+    policy_excerpt: str = Field(default="")
+    facts_bullets: str = Field(default="")
+    short_description: str = Field(default="")
+
+
+class GoldenTurnExpectation(BaseModel):
+    turn_index: int
+    expected: Dict[str, List[str]] = Field(default_factory=dict)
+
+
+class GoldenEntry(BaseModel):
+    conversation_id: str
+    turns: List[GoldenTurnExpectation] = Field(default_factory=list)
+    final_outcome: Dict[str, str] = Field(default_factory=dict)
+    constraints: Dict[str, Any] = Field(default_factory=dict)
+
+
+class GoldenDataset(BaseModel):
+    dataset_id: str
+    version: str
+    entries: List[GoldenEntry] = Field(default_factory=list)
