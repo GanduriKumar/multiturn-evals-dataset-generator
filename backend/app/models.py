@@ -45,3 +45,12 @@ class VerticalConfigResponse(BaseModel):
     workflows: List[str]
     behaviours: List[str]
     axes: Dict[str, List[str]]
+
+
+class ConversationPlan(BaseModel):
+    vertical: IndustryVertical
+    workflow: str
+    scenario_id: str
+    behaviours: List[BehaviourFlag] = Field(default_factory=list)
+    axes: Dict[str, str] = Field(default_factory=dict)
+    turn_plan: List[Dict[str, str]] = Field(default_factory=list)

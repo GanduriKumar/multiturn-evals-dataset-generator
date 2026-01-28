@@ -1,5 +1,5 @@
 templates:
-  - workflow: ReturnsRefundsExchanges
+  - workflow: ReturnsRefunds
     speaker: user
     role: customer
     behaviour: HappyPath
