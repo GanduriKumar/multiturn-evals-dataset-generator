@@ -16,7 +16,7 @@ const VERTICALS = [
   { value: 'telecom', label: 'Telecom' },
 ]
 
-const NAV_PAGES = ['Home', 'Settings', 'Generate', 'Scoring']
+const NAV_PAGES = ['Home', 'Generate', 'Scoring']
 const BRAND_COLORS = ['#4285F4', '#EA4335', '#FBBC05', '#34A853']
 
 function App() {
@@ -27,6 +27,7 @@ function App() {
   const [selectedBehaviours, setSelectedBehaviours] = useState<string[]>([])
   const [axesSelections, setAxesSelections] = useState<Record<string, string[]>>({})
   const [generatedDatasets, setGeneratedDatasets] = useState<string[]>([])
+  const [selectedDatasetItems, setSelectedDatasetItems] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
@@ -95,7 +96,6 @@ function App() {
 
   const pageSubtitle: Record<string, string> = {
     Home: 'Overview of your current configuration and progress.',
-    Settings: 'Configure defaults for dataset generation.',
     Generate: 'Pick a vertical to load workflows, behaviours, and axes.',
     Scoring: 'Upload outputs to score model performance.',
   }
@@ -196,6 +196,12 @@ function App() {
   }, [generatedDatasets])
 
   useEffect(() => {
+    setSelectedDatasetItems((current) =>
+      current.filter((dataset) => generatedDatasets.includes(dataset)),
+    )
+  }, [generatedDatasets])
+
+  useEffect(() => {
     // Load turn settings from localStorage
     const savedMinTurns = localStorage.getItem('eval_min_turns')
     const savedMaxTurns = localStorage.getItem('eval_max_turns')
@@ -258,6 +264,26 @@ function App() {
       }
     } catch (err) {
       setDatasetPreview(`Error reading file: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    }
+  }
+
+  const toggleDatasetSelection = (name: string) => {
+    setSelectedDatasetItems((current) =>
+      current.includes(name)
+        ? current.filter((item) => item !== name)
+        : [...current, name],
+    )
+  }
+
+  const handleDeleteSelectedDatasets = () => {
+    if (selectedDatasetItems.length === 0) return
+    const toDelete = new Set(selectedDatasetItems)
+    const remaining = generatedDatasets.filter((dataset) => !toDelete.has(dataset))
+    setGeneratedDatasets(remaining)
+    setSelectedDatasetItems([])
+    setSelectedDataset((current) => (current && toDelete.has(current) ? null : current))
+    if (selectedDataset && toDelete.has(selectedDataset)) {
+      setDatasetPreview('')
     }
   }
 
@@ -418,7 +444,7 @@ function App() {
                 <h2 className="text-sm font-semibold text-[#202124]">Summary</h2>
                 <div className="mt-3 space-y-2 text-sm text-[#5F6368]">
                   <div>Workflows: {selectedWorkflows.length}</div>
-                  <div>Behaviours: {selectedBehaviours.length || 1}</div>
+                  <div>Behaviours: {selectedBehaviours.length}</div>
                   <div>Selected scenarios: {selectedScenarioCount}</div>
                   <div>Turns per conversation: {minTurns}-{maxTurns}</div>
                   <div className="pt-2 border-t border-[#E5E7EB]">
@@ -427,6 +453,99 @@ function App() {
                       {selectedWorkflows.length * (selectedBehaviours.length || 1) * scenarioCombinationCount}
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <div className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow">
+                <h2 className="text-sm font-semibold text-[#202124]">Conversation Turns</h2>
+                <p className="mt-1 text-xs text-[#5F6368]">Configure conversation turn range for generated datasets.</p>
+                <div className="mt-4 space-y-3">
+                  <div>
+                    <label className="text-xs font-medium text-[#202124]">Minimum Turns</label>
+                    <input
+                      type="number"
+                      min="3"
+                      max="15"
+                      value={minTurns}
+                      onChange={(e) => {
+                        const val = Math.max(3, Math.min(15, parseInt(e.target.value, 10)))
+                        setMinTurns(val)
+                        localStorage.setItem('eval_min_turns', val.toString())
+                      }}
+                      className="mt-1 w-full rounded border border-[#E5E7EB] bg-white p-2 text-sm"
+                    />
+                    <p className="mt-1 text-xs text-[#5F6368]">Current: {minTurns} turns (3-15)</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-[#202124]">Maximum Turns</label>
+                    <input
+                      type="number"
+                      min="3"
+                      max="15"
+                      value={maxTurns}
+                      onChange={(e) => {
+                        const val = Math.max(3, Math.min(15, parseInt(e.target.value, 10)))
+                        setMaxTurns(val)
+                        localStorage.setItem('eval_max_turns', val.toString())
+                      }}
+                      className="mt-1 w-full rounded border border-[#E5E7EB] bg-white p-2 text-sm"
+                    />
+                    <p className="mt-1 text-xs text-[#5F6368]">Current: {maxTurns} turns (3-15)</p>
+                  </div>
+                  {minTurns > maxTurns && (
+                    <p className="text-xs text-[#EA4335]">⚠ Min turns cannot exceed max turns</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow">
+                <h2 className="text-sm font-semibold text-[#202124]">Dataset Generation Configuration</h2>
+                <p className="mt-3 text-sm text-[#5F6368]">
+                  Save and load preset configurations per vertical.
+                </p>
+                <div className="mt-4 space-y-3">
+                  <input
+                    type="text"
+                    value={presetName}
+                    onChange={(event) => setPresetName(event.target.value)}
+                    placeholder="Preset name"
+                    className="w-full rounded border border-[#E5E7EB] bg-white p-2 text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={savePreset}
+                    className="rounded bg-[#34A853] px-4 py-2 text-sm font-medium text-white"
+                  >
+                    Save config
+                  </button>
+                </div>
+                <div className="mt-4 space-y-2 text-sm text-[#5F6368]">
+                  {presetNames.length === 0 && (
+                    <p>No presets saved for this vertical yet.</p>
+                  )}
+                  {presetNames.map((name) => (
+                    <div key={name} className="flex items-center justify-between">
+                      <span>{name}</span>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => loadPreset(name)}
+                          className="rounded border border-[#E5E7EB] px-2 py-1 text-xs text-[#202124]"
+                        >
+                          Load
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deletePreset(name)}
+                          className="rounded border border-[#EA4335] px-2 py-1 text-xs text-[#EA4335]"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -580,31 +699,71 @@ function App() {
 
             <div className="mt-6 grid gap-3 md:grid-cols-2">
               <div className="rounded-lg border border-[#E5E7EB] bg-white p-3 shadow">
-                <h2 className="text-xs font-semibold text-[#202124]">Generated Datasets</h2>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xs font-semibold text-[#202124]">Generated Datasets</h2>
+                  <div className="flex items-center gap-2">
+                    <label className="flex items-center gap-1 text-[10px] text-[#5F6368]">
+                      <input
+                        type="checkbox"
+                        className="h-3 w-3 rounded border-gray-300 text-[#4285F4]"
+                        checked={
+                          generatedDatasets.length > 0 &&
+                          selectedDatasetItems.length === generatedDatasets.length
+                        }
+                        onChange={(event) => {
+                          if (event.target.checked) {
+                            setSelectedDatasetItems(generatedDatasets)
+                          } else {
+                            setSelectedDatasetItems([])
+                          }
+                        }}
+                      />
+                      Select all
+                    </label>
+                    <button
+                      type="button"
+                      className="rounded border border-[#EA4335] px-2 py-1 text-[10px] font-medium text-[#EA4335] disabled:opacity-50"
+                      disabled={selectedDatasetItems.length === 0}
+                      onClick={handleDeleteSelectedDatasets}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
                 {generatedDatasets.length === 0 ? (
                   <p className="mt-3 text-xs text-[#5F6368]">No datasets generated yet. Generate a dataset to see files here.</p>
                 ) : (
                   <div className="mt-2 space-y-1">
                     {generatedDatasets.map((dataset) => (
-                      <button
+                      <div
                         key={dataset}
-                        type="button"
-                        onClick={() => {
-                          setSelectedDataset(dataset)
-                          if (zipFileData) {
-                            extractFileFromZip(dataset, zipFileData)
-                          } else {
-                            setDatasetPreview('ZIP file data not available')
-                          }
-                        }}
-                        className={`w-full rounded px-2 py-1 text-left text-xs transition ${
+                        className={`flex items-center gap-2 rounded px-2 py-1 text-xs transition ${
                           selectedDataset === dataset
                             ? 'bg-[#4285F4] text-white'
                             : 'border border-[#E5E7EB] bg-white text-[#202124] hover:bg-[#F0F0F0]'
                         }`}
                       >
-                        {dataset}
-                      </button>
+                        <input
+                          type="checkbox"
+                          className="h-3 w-3 rounded border-gray-300 text-[#4285F4]"
+                          checked={selectedDatasetItems.includes(dataset)}
+                          onChange={() => toggleDatasetSelection(dataset)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedDataset(dataset)
+                            if (zipFileData) {
+                              extractFileFromZip(dataset, zipFileData)
+                            } else {
+                              setDatasetPreview('ZIP file data not available')
+                            }
+                          }}
+                          className="flex-1 text-left"
+                        >
+                          {dataset}
+                        </button>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -629,123 +788,6 @@ function App() {
           </>
         )}
 
-        {activePage === 'Settings' && (
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow">
-              <h2 className="text-sm font-semibold text-[#202124]">Defaults</h2>
-              <div className="mt-3 space-y-3 text-sm text-[#5F6368]">
-                <div>
-                  <label className="text-xs font-medium text-[#202124]">Language</label>
-                  <select className="mt-1 w-full rounded border border-[#E5E7EB] bg-white p-2">
-                    <option>en-US</option>
-                    <option>en-GB</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-[#202124]">Channel</label>
-                  <select className="mt-1 w-full rounded border border-[#E5E7EB] bg-white p-2">
-                    <option>web</option>
-                    <option>mobile</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-            <div className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow">
-              <h2 className="text-sm font-semibold text-[#202124]">Conversation Turns</h2>
-              <p className="mt-1 text-xs text-[#5F6368]">Configure conversation turn range for generated datasets.</p>
-              <div className="mt-4 space-y-3">
-                <div>
-                  <label className="text-xs font-medium text-[#202124]">Minimum Turns</label>
-                  <input
-                    type="number"
-                    min="3"
-                    max="15"
-                    value={minTurns}
-                    onChange={(e) => {
-                      const val = Math.max(3, Math.min(15, parseInt(e.target.value, 10)))
-                      setMinTurns(val)
-                      localStorage.setItem('eval_min_turns', val.toString())
-                    }}
-                    className="mt-1 w-full rounded border border-[#E5E7EB] bg-white p-2 text-sm"
-                  />
-                  <p className="mt-1 text-xs text-[#5F6368]">Current: {minTurns} turns (3-15)</p>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-[#202124]">Maximum Turns</label>
-                  <input
-                    type="number"
-                    min="3"
-                    max="15"
-                    value={maxTurns}
-                    onChange={(e) => {
-                      const val = Math.max(3, Math.min(15, parseInt(e.target.value, 10)))
-                      setMaxTurns(val)
-                      localStorage.setItem('eval_max_turns', val.toString())
-                    }}
-                    className="mt-1 w-full rounded border border-[#E5E7EB] bg-white p-2 text-sm"
-                  />
-                  <p className="mt-1 text-xs text-[#5F6368]">Current: {maxTurns} turns (3-15)</p>
-                </div>
-                {minTurns > maxTurns && (
-                  <p className="text-xs text-[#EA4335]">⚠ Min turns cannot exceed max turns</p>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activePage === 'Settings' && (
-          <div className="mt-4 grid gap-4 md:grid-cols-1">
-            <div className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow">
-              <h2 className="text-sm font-semibold text-[#202124]">Presets</h2>
-              <p className="mt-3 text-sm text-[#5F6368]">
-                Save and load preset configurations per vertical.
-              </p>
-              <div className="mt-4 space-y-3">
-                <input
-                  type="text"
-                  value={presetName}
-                  onChange={(event) => setPresetName(event.target.value)}
-                  placeholder="Preset name"
-                  className="w-full rounded border border-[#E5E7EB] bg-white p-2 text-sm"
-                />
-                <button
-                  type="button"
-                  onClick={savePreset}
-                  className="rounded bg-[#34A853] px-4 py-2 text-sm font-medium text-white"
-                >
-                  Save preset
-                </button>
-              </div>
-              <div className="mt-4 space-y-2 text-sm text-[#5F6368]">
-                {presetNames.length === 0 && (
-                  <p>No presets saved for this vertical yet.</p>
-                )}
-                {presetNames.map((name) => (
-                  <div key={name} className="flex items-center justify-between">
-                    <span>{name}</span>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => loadPreset(name)}
-                        className="rounded border border-[#E5E7EB] px-2 py-1 text-xs text-[#202124]"
-                      >
-                        Load
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => deletePreset(name)}
-                        className="rounded border border-[#EA4335] px-2 py-1 text-xs text-[#EA4335]"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
 
         {activePage === 'Scoring' && (
           <div className="grid gap-4 md:grid-cols-2">
