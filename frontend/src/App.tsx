@@ -360,8 +360,7 @@ function App() {
       <nav className="bg-slate-50 py-4">
         <div className="mx-auto flex max-w-6xl items-center justify-between rounded-full border border-[#202124] bg-white px-6 py-3 shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="h-3 w-3 rounded-full bg-[#4285F4]" />
-            <span className="text-lg font-semibold text-[#202124]">Eval Dataset Generator</span>
+            <span className="text-lg font-semibold text-[#202124]">Multi Turn Evals Dataset Generator</span>
           </div>
           <div className="flex items-center gap-2 text-sm">
             {NAV_PAGES.map((page) => (
