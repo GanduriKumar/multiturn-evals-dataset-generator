@@ -1,0 +1,14 @@
+workflows:
+  - ProductDiscoverySearch
+  - ProductComparison
+  - PricingPromotions
+  - CartManagement
+  - CheckoutPayments
+  - ShippingDelivery
+  - OrderStatusTracking
+  - ReturnsRefundsExchanges
+  - CancellationsModifications
+  - ProductAvailability
+  - AccountProfile
+  - LoyaltyRewards
+  - TrustSafetyFraud

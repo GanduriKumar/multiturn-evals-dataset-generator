@@ -1,0 +1,26 @@
+axes:
+  claim_urgency:
+    - low
+    - med
+    - high
+  coverage_status:
+    - covered
+    - partial
+    - not_covered
+  deductible_level:
+    - low
+    - med
+    - high
+  policy_type:
+    - auto
+    - home
+    - health
+    - life
+  incident_timing:
+    - recent
+    - past
+    - ongoing
+  payment_status:
+    - current
+    - late
+    - delinquent

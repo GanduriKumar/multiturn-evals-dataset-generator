@@ -1,0 +1,12 @@
+behaviours:
+  - HappyPath
+  - ConstraintHeavyQueries
+  - AmbiguousQueries
+  - MultiTurnConversations
+  - UserCorrections
+  - AdversarialTrapQueries
+  - ImpatientUser
+  - LowContext
+  - OverSpecified
+  - EmotionallyCharged
+  - NonNativeSpeaker

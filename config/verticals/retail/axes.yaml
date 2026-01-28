@@ -1,0 +1,25 @@
+axes:
+  availability:
+    - available
+    - limited
+    - out_of_stock
+  price_sensitivity:
+    - low
+    - med
+    - high
+  fulfillment_method:
+    - pickup
+    - delivery
+    - ship_to_home
+  return_window:
+    - within_window
+    - near_expiry
+    - expired
+  basket_size:
+    - single_item
+    - multi_item
+    - bulk
+  payment_method:
+    - card
+    - cash
+    - wallet

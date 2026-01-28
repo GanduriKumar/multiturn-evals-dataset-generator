@@ -1,0 +1,13 @@
+workflows:
+  - NewServiceSignup
+  - PlanChange
+  - AddLine
+  - DeviceUpgrade
+  - SIMActivation
+  - BillingDispute
+  - PaymentArrangement
+  - OutageReport
+  - SpeedTroubleshooting
+  - RoamingInquiry
+  - CancelService
+  - EquipmentReturn

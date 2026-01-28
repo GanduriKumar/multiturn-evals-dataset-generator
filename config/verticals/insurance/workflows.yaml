@@ -1,0 +1,13 @@
+workflows:
+  - QuoteRequest
+  - PolicyPurchase
+  - CoverageCheck
+  - PolicyUpdate
+  - ClaimFiling
+  - ClaimStatus
+  - ClaimDenialAppeal
+  - PaymentBilling
+  - PremiumChange
+  - IDCardRequest
+  - PolicyCancellation
+  - BeneficiaryUpdate

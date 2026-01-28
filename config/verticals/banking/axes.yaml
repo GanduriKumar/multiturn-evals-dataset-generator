@@ -1,0 +1,29 @@
+axes:
+  risk_level:
+    - low
+    - med
+    - high
+  kyc_status:
+    - complete
+    - partial
+    - missing
+  account_type:
+    - checking
+    - savings
+    - credit
+  channel:
+    - mobile
+    - web
+    - branch
+  verification_level:
+    - basic
+    - strong
+    - enhanced
+  transaction_amount:
+    - low
+    - med
+    - high
+  customer_tenure:
+    - new
+    - established
+    - vip

@@ -1,0 +1,25 @@
+axes:
+  network_status:
+    - normal
+    - degraded
+    - outage
+  contract_status:
+    - in_contract
+    - month_to_month
+    - unknown
+  device_condition:
+    - working
+    - damaged
+    - lost
+  plan_type:
+    - prepaid
+    - postpaid
+    - family
+  data_usage:
+    - low
+    - med
+    - high
+  region:
+    - domestic
+    - roaming
+    - international

@@ -1,0 +1,33 @@
+axes:
+  price_sensitivity:
+    - low
+    - med
+    - high
+  brand_preference:
+    - none
+    - med
+    - high
+  availability:
+    - available
+    - low_stock
+    - out_of_stock
+  policy_boundary:
+    - allowed
+    - partial
+    - not_allowed
+  delivery_speed:
+    - standard
+    - expedited
+    - same_day
+  return_window:
+    - within_window
+    - near_expiry
+    - expired
+  fraud_risk:
+    - low
+    - med
+    - high
+  item_condition:
+    - new
+    - used
+    - defective

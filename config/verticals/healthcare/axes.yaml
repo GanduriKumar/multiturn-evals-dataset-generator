@@ -1,0 +1,25 @@
+axes:
+  urgency:
+    - routine
+    - soon
+    - urgent
+  insurance_status:
+    - insured
+    - self_pay
+    - unknown
+  provider_availability:
+    - available
+    - limited
+    - none
+  visit_type:
+    - new_patient
+    - returning
+    - urgent_care
+  patient_age_group:
+    - pediatric
+    - adult
+    - senior
+  language_support:
+    - english
+    - spanish
+    - other

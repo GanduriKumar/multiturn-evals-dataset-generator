@@ -1,0 +1,13 @@
+workflows:
+  - ProductDiscovery
+  - ProductAvailability
+  - StoreAvailability
+  - PriceMatch
+  - PromotionsCoupons
+  - CheckoutPayments
+  - ReturnsExchanges
+  - OrderPickup
+  - DeliveryScheduling
+  - GiftCards
+  - LoyaltyRewards
+  - WarrantySupport

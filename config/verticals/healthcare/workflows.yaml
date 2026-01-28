@@ -1,0 +1,13 @@
+workflows:
+  - AppointmentScheduling
+  - AppointmentReschedule
+  - ProviderSearch
+  - SymptomTriage
+  - LabResults
+  - PrescriptionRefill
+  - MedicationQuestions
+  - BillingInquiry
+  - InsuranceVerification
+  - ReferralRequest
+  - TelehealthSetup
+  - RecordsRequest

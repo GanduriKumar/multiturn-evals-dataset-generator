@@ -3,3 +3,5 @@ uvicorn
 pydantic
 python-multipart
 pyyaml
+pytest
+httpx

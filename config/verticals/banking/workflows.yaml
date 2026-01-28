@@ -1,0 +1,16 @@
+workflows:
+  - AccountOpening
+  - BalanceInquiry
+  - TransactionHistory
+  - CardActivation
+  - LostStolenCard
+  - CardReplacement
+  - PINReset
+  - FundsTransfer
+  - BillPay
+  - TransactionDispute
+  - Chargeback
+  - LoanEligibility
+  - LoanApplicationStatus
+  - MortgageInquiry
+  - FraudAlert
