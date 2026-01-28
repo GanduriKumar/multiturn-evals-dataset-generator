@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
+import JSZip from 'jszip'
 
 type VerticalConfig = {
   workflows: string[]
@@ -25,11 +27,27 @@ function App() {
   const [selectedWorkflows, setSelectedWorkflows] = useState<string[]>([])
   const [selectedBehaviours, setSelectedBehaviours] = useState<string[]>([])
   const [axesSelections, setAxesSelections] = useState<Record<string, string>>({})
-  const [generatedDatasets] = useState<string[]>([])
+  const [generatedDatasets, setGeneratedDatasets] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [generateError, setGenerateError] = useState<string | null>(null)
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null)
+  const [downloadName, setDownloadName] = useState<string | null>(null)
   const [presetName, setPresetName] = useState('')
   const [presetNames, setPresetNames] = useState<string[]>([])
+  const [domainSchemaFile, setDomainSchemaFile] = useState<File | null>(null)
+  const [behaviourSchemaFile, setBehaviourSchemaFile] = useState<File | null>(null)
+  const [axesSchemaFile, setAxesSchemaFile] = useState<File | null>(null)
+  const [downloadFormat, setDownloadFormat] = useState<'json' | 'csv'>('json')
+  const [generationProgress, setGenerationProgress] = useState(0)
+  const [isPaused, setIsPaused] = useState(false)
+  const [minTurns, setMinTurns] = useState(5)
+  const [maxTurns, setMaxTurns] = useState(9)
+  const [selectedDataset, setSelectedDataset] = useState<string | null>(null)
+  const [datasetPreview, setDatasetPreview] = useState<string>('')
+  const [zipFileData, setZipFileData] = useState<Blob | null>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     let isMounted = true
@@ -147,6 +165,160 @@ function App() {
     refreshPresetList()
   }, [presetPrefix])
 
+  useEffect(() => {
+    // Load turn settings from localStorage
+    const savedMinTurns = localStorage.getItem('eval_min_turns')
+    const savedMaxTurns = localStorage.getItem('eval_max_turns')
+    if (savedMinTurns) setMinTurns(parseInt(savedMinTurns, 10))
+    if (savedMaxTurns) setMaxTurns(parseInt(savedMaxTurns, 10))
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (downloadUrl) {
+        URL.revokeObjectURL(downloadUrl)
+      }
+    }
+  }, [downloadUrl])
+
+  const buildGenerationPayload = () => ({
+    vertical,
+    workflows: selectedWorkflows,
+    behaviours: selectedBehaviours,
+    axes: axesSelections,
+    num_samples_per_combo: 1,
+    language_locale: 'en-US',
+    channel: 'web',
+    random_seed: null,
+    min_turns: minTurns,
+    max_turns: maxTurns,
+  })
+
+  const extractFilename = (contentDisposition: string | null) => {
+    if (!contentDisposition) return null
+    const match = contentDisposition.match(/filename=([^;]+)/i)
+    if (!match) return null
+    return match[1]?.replace(/"/g, '').trim() ?? null
+  }
+
+  const triggerDownload = (url: string, name: string) => {
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = name
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+  }
+
+  const extractFileFromZip = async (filename: string, blob: Blob) => {
+    try {
+      const zip = new JSZip()
+      const zipData = await zip.loadAsync(blob)
+      const file = zipData.file(filename)
+      if (!file) {
+        setDatasetPreview(`File "${filename}" not found in archive`)
+        return
+      }
+      const content = await file.async('string')
+      // Limit preview to first 2000 characters for large files
+      if (content.length > 2000) {
+        setDatasetPreview(content.substring(0, 2000) + '\n\n... (truncated, download to see full content)')
+      } else {
+        setDatasetPreview(content)
+      }
+    } catch (err) {
+      setDatasetPreview(`Error reading file: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    }
+  }
+
+  const generateDataset = async () => {
+    if (selectedWorkflows.length === 0) {
+      setGenerateError('Select at least one workflow before generating.')
+      return
+    }
+    setGenerateError(null)
+    setIsGenerating(true)
+    setGenerationProgress(0)
+    setIsPaused(false)
+    abortControllerRef.current = new AbortController()
+
+    try {
+      const formData = new FormData()
+      formData.append('config', JSON.stringify(buildGenerationPayload()))
+      if (domainSchemaFile) {
+        formData.append('domain_schema', domainSchemaFile)
+      }
+      if (behaviourSchemaFile) {
+        formData.append('behaviour_schema', behaviourSchemaFile)
+      }
+      if (axesSchemaFile) {
+        formData.append('axes_schema', axesSchemaFile)
+      }
+
+      // Simulate progress updates while waiting for response
+      const progressInterval = setInterval(() => {
+        setGenerationProgress((prev) => {
+          if (prev >= 90) return prev
+          return prev + Math.random() * 20
+        })
+      }, 500)
+
+      const response = await fetch('/generate-dataset', {
+        method: 'POST',
+        body: formData,
+        signal: abortControllerRef.current.signal,
+      })
+
+      clearInterval(progressInterval)
+
+      if (!response.ok) {
+        const text = await response.text()
+        throw new Error(text || `Failed to generate dataset (${response.status})`)
+      }
+
+      const blob = await response.blob()
+      const nextUrl = URL.createObjectURL(blob)
+      const filename =
+        extractFilename(response.headers.get('Content-Disposition')) ?? 'dataset.zip'
+
+      if (downloadUrl) {
+        URL.revokeObjectURL(downloadUrl)
+      }
+
+      setDownloadUrl(nextUrl)
+      setDownloadName(filename)
+      setZipFileData(blob)
+      setGeneratedDatasets(['eval_dataset.jsonl', 'golden_dataset.jsonl', 'manifest.json'])
+      setGenerationProgress(100)
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        setGenerateError('Generation aborted')
+      } else {
+        setGenerateError(err instanceof Error ? err.message : 'Generation failed')
+      }
+    } finally {
+      setIsGenerating(false)
+      setIsPaused(false)
+    }
+  }
+
+  const pauseGeneration = () => {
+    setIsPaused(true)
+  }
+
+  const resumeGeneration = () => {
+    setIsPaused(false)
+  }
+
+  const abortGeneration = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      setIsGenerating(false)
+      setIsPaused(false)
+      setGenerationProgress(0)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <nav className="bg-slate-50 py-4">
@@ -233,27 +405,32 @@ function App() {
               </div>
 
               <div className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow">
-                <h2 className="text-sm font-semibold text-[#202124]">Selected Summary</h2>
+                <h2 className="text-sm font-semibold text-[#202124]">Summary</h2>
                 <div className="mt-3 space-y-2 text-sm text-[#5F6368]">
                   <div>Workflows: {selectedWorkflows.length}</div>
-                  <div>Behaviours: {selectedBehaviours.length}</div>
-                  <div>Axes configured: {Object.keys(axesSelections).length}</div>
+                  <div>Behaviours: {selectedBehaviours.length || 1}</div>
+                  <div>Turns per conversation: {minTurns}-{maxTurns}</div>
+                  <div className="pt-2 border-t border-[#E5E7EB]">
+                    <div className="font-medium text-[#202124]">
+                      Total conversations: {selectedWorkflows.length * (selectedBehaviours.length || 1)}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div className="mt-6 grid gap-4 md:grid-cols-2">
-              <div className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow">
-                <h2 className="text-sm font-semibold text-[#202124]">Workflows</h2>
-                <div className="mt-3 grid gap-2">
+            <div className="mt-6 grid gap-3 md:grid-cols-4">
+              <div className="rounded-lg border border-[#E5E7EB] bg-white p-3 shadow">
+                <h2 className="text-xs font-semibold text-[#202124]">Workflows</h2>
+                <div className="mt-2 max-h-48 overflow-y-auto grid gap-1">
                   {(config?.workflows ?? []).map((workflow) => (
                     <label
                       key={workflow}
-                      className="flex items-center gap-2 text-sm text-[#202124]"
+                      className="flex items-center gap-1 text-xs text-[#202124]"
                     >
                       <input
                         type="checkbox"
-                        className="h-4 w-4 rounded border-gray-300 text-[#4285F4]"
+                        className="h-3 w-3 rounded border-gray-300 text-[#4285F4]"
                         checked={selectedWorkflows.includes(workflow)}
                         onChange={() =>
                           toggleSelection(workflow, selectedWorkflows, setSelectedWorkflows)
@@ -270,17 +447,17 @@ function App() {
                 </div>
               </div>
 
-              <div className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow">
-                <h2 className="text-sm font-semibold text-[#202124]">Behaviours</h2>
-                <div className="mt-3 grid gap-2">
+              <div className="rounded-lg border border-[#E5E7EB] bg-white p-3 shadow">
+                <h2 className="text-xs font-semibold text-[#202124]">Behaviours</h2>
+                <div className="mt-2 max-h-48 overflow-y-auto grid gap-1">
                   {(config?.behaviours ?? []).map((behaviour) => (
                     <label
                       key={behaviour}
-                      className="flex items-center gap-2 text-sm text-[#202124]"
+                      className="flex items-center gap-1 text-xs text-[#202124]"
                     >
                       <input
                         type="checkbox"
-                        className="h-4 w-4 rounded border-gray-300 text-[#4285F4]"
+                        className="h-3 w-3 rounded border-gray-300 text-[#4285F4]"
                         checked={selectedBehaviours.includes(behaviour)}
                         onChange={() =>
                           toggleSelection(behaviour, selectedBehaviours, setSelectedBehaviours)
@@ -296,17 +473,15 @@ function App() {
                   )}
                 </div>
               </div>
-            </div>
 
-            <div className="mt-6 grid gap-4 lg:grid-cols-2">
-              <div className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow">
-                <h2 className="text-sm font-semibold text-[#202124]">Axes</h2>
-                <div className="mt-3 grid gap-4 md:grid-cols-2">
+              <div className="rounded-lg border border-[#E5E7EB] bg-white p-3 shadow">
+                <h2 className="text-xs font-semibold text-[#202124]">Scenarios</h2>
+                <div className="mt-2 max-h-48 overflow-y-auto grid gap-2">
                   {axesEntries.map(([axis, values]) => (
-                    <div key={axis} className="flex flex-col gap-2">
-                      <label className="text-sm font-medium text-[#202124]">{axis}</label>
+                    <div key={axis} className="flex flex-col gap-1">
+                      <label className="text-xs font-medium text-[#202124]">{axis}</label>
                       <select
-                        className="rounded border border-[#E5E7EB] bg-white p-2 shadow-sm"
+                        className="rounded border border-[#E5E7EB] bg-white p-1 text-xs shadow-sm"
                         value={axesSelections[axis] ?? ''}
                         onChange={(event) =>
                           setAxesSelections((prev) => ({
@@ -324,95 +499,153 @@ function App() {
                     </div>
                   ))}
                   {!config && (
-                    <p className="text-sm text-[#5F6368]">Select a vertical to view axes.</p>
+                    <p className="text-sm text-[#5F6368]">Select a vertical to view scenarios.</p>
                   )}
                 </div>
               </div>
 
-              <div className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow">
+              <div className="rounded-lg border border-[#E5E7EB] bg-white p-3 shadow">
+                <h2 className="text-xs font-semibold text-[#202124]">Generate & Download</h2>
+                
+                {isGenerating && (
+                  <div className="mt-3 flex flex-col items-center gap-3">
+                    <ResponsiveContainer width="100%" height={120}>
+                      <PieChart>
+                        <Pie
+                          data={[
+                            { name: 'Progress', value: generationProgress },
+                            { name: 'Remaining', value: 100 - generationProgress },
+                          ]}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={35}
+                          outerRadius={55}
+                          dataKey="value"
+                          startAngle={90}
+                          endAngle={-270}
+                        >
+                          <Cell fill="#4285F4" />
+                          <Cell fill="#E5E7EB" />
+                        </Pie>
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="text-center">
+                      <p className="text-xs font-semibold text-[#202124]">{Math.round(generationProgress)}%</p>
+                      <p className="text-xs text-[#5F6368]">{isPaused ? 'Paused' : 'Generating'}</p>
+                    </div>
+                    
+                    <div className="mt-2 grid w-full grid-cols-3 gap-1">
+                      <button
+                        type="button"
+                        onClick={isPaused ? resumeGeneration : pauseGeneration}
+                        className="rounded bg-[#FBBC05] px-2 py-1 text-xs font-medium text-white hover:bg-[#F9A825]"
+                      >
+                        {isPaused ? 'Resume' : 'Pause'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={abortGeneration}
+                        className="rounded bg-[#EA4335] px-2 py-1 text-xs font-medium text-white hover:bg-[#D33425]"
+                      >
+                        Abort
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {!isGenerating && (
+                  <div className="mt-2 space-y-2">
+                    <button
+                      type="button"
+                      onClick={generateDataset}
+                      className="w-full rounded bg-[#4285F4] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#3367D6]"
+                    >
+                      Generate
+                    </button>
+                    {generateError && (
+                      <p className="text-xs text-[#EA4335]">{generateError}</p>
+                    )}
+                    <select
+                      value={downloadFormat}
+                      onChange={(e) => setDownloadFormat(e.target.value as 'json' | 'csv')}
+                      className="w-full rounded border border-[#E5E7EB] bg-white p-1 text-xs"
+                      disabled={!downloadUrl}
+                    >
+                      <option value="json">JSON (JSONL)</option>
+                      <option value="csv">CSV</option>
+                    </select>
+                    <button
+                      type="button"
+                      className="w-full rounded bg-[#34A853] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#2D8E47] disabled:opacity-60"
+                      disabled={!downloadUrl || generatedDatasets.length === 0}
+                      onClick={() => {
+                        if (downloadUrl && downloadName) {
+                          triggerDownload(downloadUrl, downloadName)
+                        }
+                      }}
+                    >
+                      Download
+                    </button>
+                  </div>
+                )}
+
+                {generatedDatasets.length > 0 && !isGenerating && (
+                  <div className="mt-2 text-xs text-[#5F6368]">
+                    <p className="font-medium">Ready:</p>
+                    {generatedDatasets.map((dataset) => (
+                      <p key={dataset} className="truncate">{dataset}</p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-6 grid gap-3 md:grid-cols-2">
+              <div className="rounded-lg border border-[#E5E7EB] bg-white p-3 shadow">
+                <h2 className="text-xs font-semibold text-[#202124]">Generated Datasets</h2>
+                {generatedDatasets.length === 0 ? (
+                  <p className="mt-3 text-xs text-[#5F6368]">No datasets generated yet. Generate a dataset to see files here.</p>
+                ) : (
+                  <div className="mt-2 space-y-1">
+                    {generatedDatasets.map((dataset) => (
+                      <button
+                        key={dataset}
+                        type="button"
+                        onClick={() => {
+                          setSelectedDataset(dataset)
+                          if (zipFileData) {
+                            extractFileFromZip(dataset, zipFileData)
+                          } else {
+                            setDatasetPreview('ZIP file data not available')
+                          }
+                        }}
+                        className={`w-full rounded px-2 py-1 text-left text-xs transition ${
+                          selectedDataset === dataset
+                            ? 'bg-[#4285F4] text-white'
+                            : 'border border-[#E5E7EB] bg-white text-[#202124] hover:bg-[#F0F0F0]'
+                        }`}
+                      >
+                        {dataset}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-lg border border-[#E5E7EB] bg-white p-3 shadow">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-[#202124]">JSON Preview</h2>
-                  <span className="rounded-full bg-[#E8F0FE] px-3 py-1 text-xs font-medium text-[#4285F4]">
-                    JSON
+                  <h2 className="text-xs font-semibold text-[#202124]">
+                    {selectedDataset ? `Preview: ${selectedDataset}` : 'Dataset Preview'}
+                  </h2>
+                  <span className="rounded-full bg-[#E8F0FE] px-2 py-0.5 text-xs font-medium text-[#4285F4]">
+                    {selectedDataset ? 'PREVIEW' : 'READY'}
                   </span>
                 </div>
-                <pre className="mt-4 max-h-72 overflow-auto rounded bg-gray-900 p-4 text-xs text-green-300">
-                  {JSON.stringify(previewPayload, null, 2)}
+                <pre className="mt-3 max-h-64 overflow-auto rounded bg-gray-900 p-2 text-xs text-green-300">
+                  {selectedDataset
+                    ? datasetPreview
+                    : JSON.stringify(previewPayload, null, 2)}
                 </pre>
-              </div>
-            </div>
-
-            <div className="mt-6 rounded-lg border border-[#E5E7EB] bg-white p-5 shadow">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-[#202124]">Generated Datasets</h2>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    className="rounded bg-[#4285F4] px-3 py-1.5 text-xs font-medium text-white"
-                    disabled={generatedDatasets.length === 0}
-                  >
-                    Download JSON
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded border border-[#E5E7EB] px-3 py-1.5 text-xs font-medium text-[#202124]"
-                    disabled={generatedDatasets.length === 0}
-                  >
-                    Download CSV
-                  </button>
-                </div>
-              </div>
-              <div className="mt-4 space-y-2 text-sm text-[#5F6368]">
-                {generatedDatasets.length === 0 && (
-                  <p>No datasets generated yet. Generate a run to populate this list.</p>
-                )}
-                {generatedDatasets.map((dataset) => (
-                  <div key={dataset} className="flex items-center justify-between">
-                    <span>{dataset}</span>
-                    <span className="text-xs text-[#4285F4]">JSON</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="mt-6 grid gap-4 md:grid-cols-2">
-              <div className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow">
-                <h2 className="text-sm font-semibold text-[#202124]">Optional Uploads</h2>
-                <div className="mt-3 space-y-3 text-sm text-[#5F6368]">
-                  <div>
-                    <label className="text-xs font-medium text-[#202124]">Workflow schema</label>
-                    <input
-                      type="file"
-                      className="mt-1 w-full rounded border border-[#E5E7EB] bg-white p-2"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-[#202124]">Behaviours schema</label>
-                    <input
-                      type="file"
-                      className="mt-1 w-full rounded border border-[#E5E7EB] bg-white p-2"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-[#202124]">Axes schema</label>
-                    <input
-                      type="file"
-                      className="mt-1 w-full rounded border border-[#E5E7EB] bg-white p-2"
-                    />
-                  </div>
-                </div>
-              </div>
-              <div className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow">
-                <h2 className="text-sm font-semibold text-[#202124]">Generate Dataset</h2>
-                <p className="mt-3 text-sm text-[#5F6368]">
-                  Generate eval and golden datasets for the selected configuration.
-                </p>
-                <button
-                  type="button"
-                  className="mt-4 rounded bg-[#4285F4] px-4 py-2 text-sm font-medium text-white hover:bg-[#3367D6]"
-                >
-                  Generate Dataset
-                </button>
               </div>
             </div>
           </>
@@ -439,6 +672,52 @@ function App() {
                 </div>
               </div>
             </div>
+            <div className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow">
+              <h2 className="text-sm font-semibold text-[#202124]">Conversation Turns</h2>
+              <p className="mt-1 text-xs text-[#5F6368]">Configure conversation turn range for generated datasets.</p>
+              <div className="mt-4 space-y-3">
+                <div>
+                  <label className="text-xs font-medium text-[#202124]">Minimum Turns</label>
+                  <input
+                    type="number"
+                    min="3"
+                    max="15"
+                    value={minTurns}
+                    onChange={(e) => {
+                      const val = Math.max(3, Math.min(15, parseInt(e.target.value, 10)))
+                      setMinTurns(val)
+                      localStorage.setItem('eval_min_turns', val.toString())
+                    }}
+                    className="mt-1 w-full rounded border border-[#E5E7EB] bg-white p-2 text-sm"
+                  />
+                  <p className="mt-1 text-xs text-[#5F6368]">Current: {minTurns} turns (3-15)</p>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-[#202124]">Maximum Turns</label>
+                  <input
+                    type="number"
+                    min="3"
+                    max="15"
+                    value={maxTurns}
+                    onChange={(e) => {
+                      const val = Math.max(3, Math.min(15, parseInt(e.target.value, 10)))
+                      setMaxTurns(val)
+                      localStorage.setItem('eval_max_turns', val.toString())
+                    }}
+                    className="mt-1 w-full rounded border border-[#E5E7EB] bg-white p-2 text-sm"
+                  />
+                  <p className="mt-1 text-xs text-[#5F6368]">Current: {maxTurns} turns (3-15)</p>
+                </div>
+                {minTurns > maxTurns && (
+                  <p className="text-xs text-[#EA4335]">⚠ Min turns cannot exceed max turns</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activePage === 'Settings' && (
+          <div className="mt-4 grid gap-4 md:grid-cols-1">
             <div className="rounded-lg border border-[#E5E7EB] bg-white p-5 shadow">
               <h2 className="text-sm font-semibold text-[#202124]">Presets</h2>
               <p className="mt-3 text-sm text-[#5F6368]">

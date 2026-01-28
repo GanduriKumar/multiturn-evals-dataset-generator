@@ -7,6 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/config': 'http://localhost:8000',
+      '/generate-dataset': 'http://localhost:8000',
       '/score-run': 'http://localhost:8000',
     },
   },

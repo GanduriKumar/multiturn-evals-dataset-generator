@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -38,6 +38,8 @@ class GenerationRequest(BaseModel):
     language_locale: str = Field(default="en-US")
     channel: str = Field(default="web")
     random_seed: Optional[int] = None
+    min_turns: int = Field(default=5, ge=3, le=15)
+    max_turns: int = Field(default=9, ge=3, le=15)
 
 
 class VerticalConfigResponse(BaseModel):
@@ -53,4 +55,4 @@ class ConversationPlan(BaseModel):
     scenario_id: str
     behaviours: List[BehaviourFlag] = Field(default_factory=list)
     axes: Dict[str, str] = Field(default_factory=dict)
-    turn_plan: List[Dict[str, str]] = Field(default_factory=list)
+    turn_plan: List[Dict[str, Any]] = Field(default_factory=list)

@@ -112,6 +112,23 @@ class TemplateEngine:
                 f"Missing template variable: {exc} for template '{selected.text}'"
             ) from exc
 
+    def select_candidate(
+        self,
+        *,
+        workflow: str,
+        speaker: str,
+        role: str,
+        behaviour: str | None,
+        axes: Mapping[str, str],
+    ) -> TemplateCandidate | None:
+        return self._select_candidate(
+            workflow=workflow,
+            speaker=speaker,
+            role=role,
+            behaviour=behaviour,
+            axes=axes,
+        )
+
     def _select_candidate(
         self,
         *,

@@ -1,13 +1,17 @@
 import io
 import json
 import logging
+import zipfile
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
 from .config_loader import load_vertical_config
-from .models import IndustryVertical, VerticalConfigResponse
+from .dataset_builder import build_eval_dataset_entries, build_golden_dataset_entries
+from .generation import build_conversation_plans
+from .models import GenerationRequest, IndustryVertical, VerticalConfigResponse
 from .scoring import score_dataset
+from .template_engine import TemplateEngine
 
 app = FastAPI(title="Eval Dataset Generator")
 logging.basicConfig(level=logging.INFO)
@@ -71,6 +75,64 @@ def _to_jsonl_bytes(entries: list[dict]) -> bytes:
         buffer.write(json.dumps(entry, ensure_ascii=False))
         buffer.write("\n")
     return buffer.getvalue().encode("utf-8")
+
+
+def _parse_generation_request(payload: str) -> GenerationRequest:
+    if hasattr(GenerationRequest, "model_validate_json"):
+        return GenerationRequest.model_validate_json(payload)
+    return GenerationRequest.parse_raw(payload)
+
+
+@app.post("/generate-dataset")
+async def generate_dataset(
+    config: str = Form(...),
+    domain_schema: UploadFile | None = File(None),
+    behaviour_schema: UploadFile | None = File(None),
+    axes_schema: UploadFile | None = File(None),
+) -> StreamingResponse:
+    try:
+        request = _parse_generation_request(config)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if domain_schema or behaviour_schema or axes_schema:
+        logger.info("schema_overrides_received")
+
+    try:
+        plans, manifest = build_conversation_plans(request)
+        template_engine = TemplateEngine.from_vertical(request.vertical)
+        eval_entries = build_eval_dataset_entries(plans, template_engine)
+        golden_entries = build_golden_dataset_entries(plans, template_engine)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    archive_buffer = io.BytesIO()
+    with zipfile.ZipFile(archive_buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("eval_dataset.jsonl", _to_jsonl_bytes(eval_entries))
+        archive.writestr("golden_dataset.jsonl", _to_jsonl_bytes(golden_entries))
+        archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+
+    archive_buffer.seek(0)
+    filename = f"{request.vertical.value}_dataset.zip"
+
+    logger.info(
+        "dataset_generated %s",
+        json.dumps(
+            {
+                "vertical": request.vertical.value,
+                "workflows": request.workflows,
+                "behaviours": [b.value for b in request.behaviours],
+                "total": len(plans),
+            },
+            ensure_ascii=False,
+        ),
+    )
+
+    return StreamingResponse(
+        archive_buffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 @app.post("/score-run")
