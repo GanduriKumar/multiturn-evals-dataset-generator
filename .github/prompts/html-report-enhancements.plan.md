@@ -1,5 +1,7 @@
 # Implementation Plan — Single‑Run HTML Report Enhancements (Self‑Contained)
 
+> Scope note (2026‑01‑29): This plan targets the **multi‑turn‑evals** report template (`backend/templates/report.html.j2`) that does **not** exist in this repository. Keep for reference or copy into the report repo.
+
 Final requirements (confirmed)
 - Scope: Enhance the existing single‑run HTML report only (no run‑to‑run compare view).
 - Packaging: One self‑contained HTML file (HTML + CSS only; no external assets/CDNs). Avoid JavaScript for now.

@@ -1,6 +1,8 @@
+import hashlib
 import io
 import json
 import logging
+import re
 import zipfile
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -83,6 +85,114 @@ def _parse_generation_request(payload: str) -> GenerationRequest:
     return GenerationRequest.parse_raw(payload)
 
 
+def _slugify(value: str) -> str:
+    cleaned = re.sub(r"[^a-z0-9]+", "-", value.strip().lower())
+    return cleaned.strip("-") or "na"
+
+
+def _normalize_behaviours(behaviours: list) -> list[str]:
+    normalized: list[str] = []
+    for behaviour in behaviours:
+        if hasattr(behaviour, "value"):
+            normalized.append(str(behaviour.value))
+        else:
+            normalized.append(str(behaviour))
+    return normalized
+
+
+def _normalize_axes(axes: dict) -> dict[str, list[str]]:
+    normalized: dict[str, list[str]] = {}
+    for axis, values in axes.items():
+        if isinstance(values, str):
+            normalized[axis] = [values]
+        elif isinstance(values, list):
+            normalized[axis] = [value for value in values if value]
+    return normalized
+
+
+def _is_all_selected(selected: list[str], all_values: list[str]) -> bool:
+    if not all_values:
+        return True
+    return set(selected) == set(all_values)
+
+
+def _summarize_list(items: list[str], label: str, max_items: int = 3) -> str | None:
+    if not items:
+        return None
+    slugs = [_slugify(item) for item in items if item]
+    if not slugs:
+        return None
+    if len(slugs) > max_items:
+        slugs = slugs[:max_items] + [f"plus{len(items) - max_items}"]
+    return f"{label}-" + "+".join(slugs)
+
+
+def _build_axes_segment(
+    selected_axes: dict[str, list[str]],
+    config_axes: dict[str, list[str]],
+) -> str | None:
+    segments: list[str] = []
+    for axis, all_values in config_axes.items():
+        values = selected_axes.get(axis, [])
+        if _is_all_selected(values, all_values):
+            continue
+        value_segment = _summarize_list(values or ["none"], _slugify(axis))
+        if value_segment:
+            segments.append(value_segment)
+    if not segments:
+        return None
+    return "scn-" + "-".join(segments)
+
+
+def _build_dataset_id(
+    request: GenerationRequest,
+    vertical_config: dict,
+    version: str = "1.0.0",
+) -> tuple[str, bool]:
+    workflows_all = _is_all_selected(request.workflows, vertical_config.get("workflows", []))
+
+    config_behaviours = vertical_config.get("behaviours", [])
+    selected_behaviours = (
+        _normalize_behaviours(request.behaviours) if request.behaviours else list(config_behaviours)
+    )
+    behaviours_all = _is_all_selected(selected_behaviours, config_behaviours)
+
+    config_axes = vertical_config.get("axes", {})
+    selected_axes = _normalize_axes(request.axes)
+    axes_all = True
+    for axis, all_values in config_axes.items():
+        values = selected_axes.get(axis, [])
+        if not _is_all_selected(values, list(all_values)):
+            axes_all = False
+            break
+
+    if workflows_all and behaviours_all and axes_all:
+        return f"{request.vertical.value}-combined-{version}", True
+
+    workflow_segment = _summarize_list(request.workflows, "wf")
+    behaviour_segment = (
+        _summarize_list(selected_behaviours, "bhv") if not behaviours_all else None
+    )
+    axes_segment = _build_axes_segment(selected_axes, config_axes)
+    segments = [segment for segment in [workflow_segment, behaviour_segment, axes_segment] if segment]
+    summary = "-".join(segments) or "custom"
+    summary = re.sub(r"-+", "-", summary).strip("-")
+
+    selection_payload = {
+        "workflows": sorted(request.workflows),
+        "behaviours": sorted(selected_behaviours),
+        "axes": {key: sorted(values) for key, values in selected_axes.items()},
+    }
+    hash_suffix = hashlib.sha1(
+        json.dumps(selection_payload, sort_keys=True).encode("utf-8")
+    ).hexdigest()[:8]
+
+    if len(summary) > 120:
+        summary = f"{summary[:90].rstrip('-')}-{hash_suffix}"
+
+    return f"{request.vertical.value}-{summary}-{version}", False
+
+
 @app.post("/generate-dataset")
 async def generate_dataset(
     config: str = Form(...),
@@ -107,7 +217,7 @@ async def generate_dataset(
         eval_entries = build_eval_dataset_entries(plans, template_engine)
         
         # Build golden dataset
-        dataset_id = f"{request.vertical.value}-combined-1.0.0"
+        dataset_id, is_combined = _build_dataset_id(request, vertical_config, version="1.0.0")
         golden_dataset_obj = build_golden_dataset(
             plans,
             template_engine,
@@ -123,7 +233,10 @@ async def generate_dataset(
             "metadata": {
                 "domain": request.vertical.value,
                 "difficulty": "mixed",
-                "tags": ["combined", plans[0].domain_label if plans else request.vertical.value],
+                "tags": [
+                    "combined" if is_combined else "custom",
+                    plans[0].domain_label if plans else request.vertical.value,
+                ],
             },
             "conversations": eval_entries,
         }

@@ -2,9 +2,11 @@
 
 ## Overview
 
-This document outlines the required changes to support **TWO** output formats:
-1. **Dataset Format** - Full conversation data with all turns (eval_dataset.json)
-2. **Golden Format** - Evaluation expectations with specific turn indices (golden_dataset.json)
+This document outlines the required changes to support **two JSON output formats**. As of 2026‑01‑29, these changes are implemented and the generator emits:
+1. **Dataset Format** – Full conversation data with all turns in `<dataset_id>.dataset.json`.
+2. **Golden Format** – Evaluation expectations in `<dataset_id>.golden.json`.
+
+> Legacy note: `/score-run` still accepts **JSONL** inputs (`golden_dataset.jsonl` and `model_outputs.jsonl`) with `expected_actions`, `key_facts`, and `scoring_rules`.
 
 ## Current vs. Target Format Analysis
 
@@ -50,22 +52,39 @@ This document outlines the required changes to support **TWO** output formats:
 }
 ```
 
-### Current Format (JSONL - Line Delimited)
+### Current Format (JSON - Dataset)
 
 ```json
 {
-  "conversation_id": "commerce-refund-0001",
-  "scenario_id": "commerce-refund-0001",
-  "vertical": "commerce",
-  "workflow": "refund",
-  "behaviours": ["HappyPath"],
-  "axes": {"price_sensitivity": "low"},
-  "turns": [
+  "dataset_id": "commerce-combined-1.0.0",
+  "version": "1.0.0",
+  "metadata": {
+    "domain": "commerce",
+    "difficulty": "mixed",
+    "tags": ["combined", "Promotions & Pricing"]
+  },
+  "conversations": [
     {
-      "turn_index": 0,
-      "speaker": "user",
-      "role": "customer",
-      "text": "I need help..."
+      "conversation_id": "promotions-pricing.refund-exchange-cancellation.price_sensitivity=low,brand_bias=hard,availability=limited_stock,policy_boundary=within_policy.0bce40a674",
+      "metadata": {
+        "domain_label": "Promotions & Pricing",
+        "behavior": "Refund/Exchange/Cancellation",
+        "axes": {
+          "price_sensitivity": "low",
+          "brand_bias": "hard",
+          "availability": "limited_stock",
+          "policy_boundary": "within_policy"
+        },
+        "policy_excerpt": "# Promotions & Pricing Policy (Excerpt)\n\n- Coupon stacking not allowed unless explicitly stated.",
+        "facts_bullets": "- Order was delivered 20 days ago; quantity 5.",
+        "short_description": "Refund/Exchange/Cancellation with axes {...}"
+      },
+      "turns": [
+        {
+          "role": "user",
+          "text": "I need help with my recent order..."
+        }
+      ]
     }
   ]
 }
@@ -73,10 +92,12 @@ This document outlines the required changes to support **TWO** output formats:
 
 ## Key Differences & Required Changes
 
+Status: All items below are **implemented** in `backend/app/generation.py`, `backend/app/dataset_builder.py`, and `backend/app/main.py`.
+
 ### 1. **Root Structure** (NEW)
-- **Current**: JSONL format (one conversation per line)
+- **Current**: Single JSON object with top-level metadata and `conversations` array
 - **Target**: Single JSON object with top-level metadata and conversations array
-- **Changes Needed**:
+- **Implemented**:
   - Add `dataset_id` field (e.g., `{vertical}-{behavior}-combined-{version}`)
   - Add `version` field (e.g., `1.0.0`)
   - Add `metadata` object with:
@@ -112,7 +133,7 @@ This document outlines the required changes to support **TWO** output formats:
 }
 ```
 
-**Changes Needed**:
+**Implemented**:
 - Move `vertical`, `workflow`, `behaviours`, `axes` into nested `metadata` object
 - **Rename** `behaviours` → `behavior` (singular) in metadata
 - **Add** `domain_label`: Human-readable domain name
@@ -141,7 +162,7 @@ This document outlines the required changes to support **TWO** output formats:
 }
 ```
 
-**Changes Needed**:
+**Implemented**:
 - Remove `turn_index` field
 - **Rename** `speaker` → `role` (use "user" or "assistant" values)
 - Remove `speaker` field entirely
@@ -171,62 +192,61 @@ This document outlines the required changes to support **TWO** output formats:
 **Target**: `{domain_label}.{behavior}.{axes_key=value,comma_separated}.{hash}`
 - Example: `promotions-pricing.refund-exchange-cancellation.price_sensitivity=low,brand_bias=hard,availability=limited_stock,policy_boundary=within_policy.0bce40a674`
 
-**Changes Needed**:
+**Implemented**:
 - Extract behavior name from workflow mapping
 - Build axes string from axis values
 - Generate 8-10 character hash from combination
 - Use URL-safe formatting (hyphens for spaces)
 
 ### 6. **Export Format** (NEW)
-**Current**: Single file per request (JSONL)
+**Current**: ZIP archive containing dataset, golden, and manifest JSON files.
 **Target**: Single JSON file containing:
 - Root metadata
 - All conversations in array
 
-**Changes Needed**:
-- Change `/generate-dataset` endpoint to return single JSON instead of multiple files
-- Aggregate conversation plans into single structure
-- Compress to ZIP if needed for large datasets
+**Implemented**:
+- `/generate-dataset` returns a ZIP with `<dataset_id>.dataset.json`, `<dataset_id>.golden.json`, and `manifest.json`.
+- Conversations are aggregated into a single JSON structure.
 
 ---
 
 ## Implementation Checklist
 
 ### Backend Changes (`app/models.py`)
-- [ ] Add `domain_label` field to ConversationPlan
-- [ ] Add `policy_excerpt` field to ConversationPlan
-- [ ] Add `facts_bullets` field to ConversationPlan
-- [ ] Add `behavior_label` field to ConversationPlan
-- [ ] Update turn model to use `role` instead of `speaker`
-- [ ] Remove `turn_index` from turn model
+- [x] Add `domain_label` field to ConversationPlan
+- [x] Add `policy_excerpt` field to ConversationPlan
+- [x] Add `facts_bullets` field to ConversationPlan
+- [x] Add `behavior_label` field to ConversationPlan
+- [x] Update turn output to use `role` instead of `speaker`
+- [x] Remove `turn_index` from dataset output turns
 - [ ] Add dataset metadata model with `dataset_id`, `version`, `metadata`, `conversations`
 
 ### Backend Changes (`app/generation.py`)
-- [ ] Update conversation_id generation to include behavior and axes in URL format
-- [ ] Add behavior-label lookup from config
-- [ ] Add policy excerpt lookup from config
-- [ ] Add facts generation from template (using axes values)
-- [ ] Generate hash for conversation_id tail
+- [x] Update conversation_id generation to include behavior and axes in URL format
+- [x] Add behavior-label lookup from config
+- [x] Add policy excerpt lookup from config
+- [x] Add facts generation from template (using axes values)
+- [x] Generate hash for conversation_id tail
 
 ### Backend Changes (`app/dataset_builder.py`)
-- [ ] Update turn structure (remove `turn_index`, rename `speaker` to `role`)
-- [ ] Move conversation metadata into nested `metadata` object
-- [ ] Update payload structure to match target format
+- [x] Update turn structure (remove `turn_index`, rename `speaker` to `role`)
+- [x] Move conversation metadata into nested `metadata` object
+- [x] Update payload structure to match target format
 
 ### Backend Changes (`app/main.py` - `/generate-dataset` endpoint)
-- [ ] Update response to return single JSON document instead of JSONL
-- [ ] Include root-level dataset metadata
-- [ ] Wrap conversations array
-- [ ] Generate dataset_id and version
+- [x] Update response to return JSON files inside a ZIP archive
+- [x] Include root-level dataset metadata
+- [x] Wrap conversations array
+- [x] Generate dataset_id and version
 
 ### Configuration Files
-- [ ] Add `policy_excerpt` to each workflow in YAML files
-- [ ] Add `domain_label` mapping (commerce → "Coverage/Promotions/Pricing", etc.)
-- [ ] Add `facts_template` to behaviors for dynamic bullet generation
-- [ ] Map workflows to behavior labels
+- [ ] Add `policy_excerpt` to each workflow in YAML files (partially done for commerce)
+- [ ] Add `domain_label` mapping for all workflows and verticals (partially done)
+- [ ] Add `facts_template` to workflows for dynamic bullet generation (partially done)
+- [ ] Map workflows to behavior labels across all verticals (partially done)
 
 ### Tests
-- [ ] Update test expectations for new format
+- [ ] Update test expectations for new format (current tests still assert JSONL shape)
 - [ ] Add tests for conversation_id generation
 - [ ] Add tests for metadata structure
 
@@ -267,10 +287,15 @@ facts_template: |
   - Inventory is {availability.replace('_', ' ')}.
   - Request is {policy_boundary.replace('_', ' ')}.
 ```
+- `backend/app/models.py`: Conversation metadata fields added (`domain_label`, `policy_excerpt`, `facts_bullets`, `behavior_label`).
+- `backend/app/generation.py`: Conversation ID format, policy excerpts, and facts generation implemented.
+- `backend/app/dataset_builder.py`: Dataset JSON structure with nested metadata and simplified turns (`role`, `text`).
+- `backend/app/main.py`: ZIP output with `<dataset_id>.dataset.json`, `<dataset_id>.golden.json`, and `manifest.json`.
+- `config/verticals/*`: Partial coverage for `policy_excerpt`, `facts_template`, and `domain_label` (complete for commerce only).
 
----
-
-## Summary of Changes by File
+Known gaps:
+- Tests in `backend/tests/` still assert JSONL shapes and need updates.
+- `/score-run` uses legacy JSONL scoring inputs and does not consume the generated golden JSON format.
 
 | File | Changes |
 |------|---------|
@@ -357,7 +382,7 @@ facts_template: |
 2. **Expected Variants**: Multiple acceptable response patterns for the same scenario
    - Example: For refund scenarios, all variants mention verification, policy compliance, and alternatives
 
-3. **Final Outcome Decision**: 
+3. **Final Outcome Decision**:
    - `ALLOW`: Policy permits the action
    - `DENY`: Policy blocks the action
    - Based on `policy_boundary` axis value
@@ -464,30 +489,46 @@ def build_golden_dataset(
 @app.post("/generate-dataset")
 async def generate_dataset(
     config: str = Form(...),
-    format: str = Form("both"),  # "dataset", "golden", or "both"
-    # ... other parameters
+  domain_schema: UploadFile | None = File(None),
+  behaviour_schema: UploadFile | None = File(None),
+  axes_schema: UploadFile | None = File(None),
 ) -> StreamingResponse:
-    # ... existing code ...
-    
-    # Generate both formats
-    dataset_json = build_dataset_json(plans, template_engine, request)
-    golden_json = build_golden_dataset(plans, template_engine, vertical_config)
-    
-    # Create ZIP with both files
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        if format in ("dataset", "both"):
-            dataset_bytes = json.dumps(dataset_json, ensure_ascii=False, indent=2).encode("utf-8")
-            zip_file.writestr(f"{dataset_id}.dataset.json", dataset_bytes)
-        
-        if format in ("golden", "both"):
-            golden_bytes = json.dumps(golden_json.dict(), ensure_ascii=False, indent=2).encode("utf-8")
-            zip_file.writestr(f"{dataset_id}.golden.json", golden_bytes)
-    
-    # ... return zip ...
+  # ... existing code ...
+
+  dataset_json = {
+    "dataset_id": dataset_id,
+    "version": "1.0.0",
+    "metadata": {"domain": request.vertical.value, "difficulty": "mixed", "tags": ["combined"]},
+    "conversations": eval_entries,
+  }
+
+  zip_buffer = io.BytesIO()
+  with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+    zip_file.writestr(f"{dataset_id}.dataset.json", json.dumps(dataset_json, ensure_ascii=False, indent=2))
+    zip_file.writestr(f"{dataset_id}.golden.json", json.dumps(golden_dataset_obj.model_dump(), ensure_ascii=False, indent=2))
+    zip_file.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+  # ... return ZIP ...
 ```
 
----
+End of document.
 
-## Summary of Changes by File
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

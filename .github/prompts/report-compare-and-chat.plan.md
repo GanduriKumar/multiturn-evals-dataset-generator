@@ -1,5 +1,7 @@
 # Implementation Plan: Report Comparison + Dataset/Report Chat
 
+> Scope note (2026‑01‑29): This plan targets the **multi‑turn‑evals** application with runs, reports, and chat features. Those components are not present in this repository.
+
 This plan follows Interview-First guidelines: clarified requirements are summarized, then modular prompts specify complete, testable units. No code is included here; each prompt instructs full implementation with tests and execution.
 
 ## Requirements Summary

@@ -13,9 +13,9 @@ flowchart LR
     CFGLOADER[Vertical Config Loader
 Loads workflows, behaviours, axes per vertical]
     GEN[Dataset Generation Engine
-- Scenario planner
-- Workflow & behaviour logic
-- JSONL emitter]
+  - Scenario planner
+  - Workflow & behaviour logic
+  - Dataset JSON builder]
     TPL[Template Engine
 Vertical-specific YAML utterance templates]
     SC[Scoring Engine
@@ -36,13 +36,13 @@ config/verticals/<vertical>/behaviours.yaml]
     AXES_CFG[Axes per Vertical
 config/verticals/<vertical>/axes.yaml]
     UT_CFG[Utterance Templates per Vertical
-config/verticals/<vertical>/utterances/*.yaml]
+  config/verticals/<vertical>/templates/*.yaml]
   end
 
   subgraph EXT[External Systems (Out of Scope)]
     MR[Model / Agent Runner
-Uses eval_dataset.jsonl
-Produces model_outputs.jsonl]
+  Uses <dataset_id>.dataset.json
+  Produces model_outputs.jsonl]
   end
 
   UI -->|Select vertical
@@ -58,10 +58,12 @@ Fetch config| API
   GEN -->|reads vertical config| CFGLOADER
   GEN -->|uses templates| TPL
   GEN -->|writes
-(eval_dataset.jsonl, golden_dataset.jsonl, manifest.json)| FS
+(<dataset_id>.dataset.json,
+<dataset_id>.golden.json,
+manifest.json)| FS
   API -->|returns ZIP| UI
 
-  MR -->|reads eval_dataset.jsonl
+  MR -->|reads <dataset_id>.dataset.json
 (runs outside this system)| FS
   MR -->|writes model_outputs.jsonl| FS
 
@@ -101,12 +103,17 @@ Fetch config| API
   - `POST /generate-dataset` to generate eval & golden datasets
   - `POST /score-run` to score model outputs against golden
 
-- **Vertical Config Loader** – Loads per-vertical configuration from `config/verticals/<vertical>/...`.
+- **Vertical Config Loader** – Loads per-vertical configuration from
+  `config/verticals/<vertical>/...`.
 
 - **Template Engine** – Uses vertical-specific YAML templates to realise natural language for user and agent turns.
 
-- **Dataset Generation Engine** – Builds `eval_dataset.jsonl` and `golden_dataset.jsonl` for the selected vertical and workflows, applying behaviours and axes.
+- **Dataset Generation Engine** – Builds `<dataset_id>.dataset.json` and
+  `<dataset_id>.golden.json` for the selected vertical and workflows, applying
+  behaviours and axes.
 
-- **Scoring Engine** – Compares model outputs to the golden dataset and produces `scored_results.jsonl` with metrics per conversation.
+- **Scoring Engine** – Compares model outputs to the legacy JSONL golden inputs
+  and produces `scored_results.jsonl` with metrics per conversation.
 
-- **External Model Runner (Out of Scope)** – Any external system that runs an LLM/agent on `eval_dataset.jsonl` and produces `model_outputs.jsonl`.
+- **External Model Runner (Out of Scope)** – Any external system that runs an
+  LLM/agent on `<dataset_id>.dataset.json` and produces `model_outputs.jsonl`.

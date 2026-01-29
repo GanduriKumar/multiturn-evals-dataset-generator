@@ -17,7 +17,7 @@ ruff_cache/
 .coverage
 .coverage.*
 htmlcov/
-
+scripts/*.pid
 # Node
 node_modules/
 *.log

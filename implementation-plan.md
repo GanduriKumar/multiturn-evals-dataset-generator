@@ -2,6 +2,14 @@
 
 This plan is designed to be executed using **GitHub Copilot Chat (VS Code)** with **Tailwind CSS** for styling the frontend UI.
 
+## Status (as of 2026‑01‑29)
+
+- Backend and frontend scaffolding exist (`backend/app/`, `frontend/`).
+- Core endpoints exist: `GET /health`, `GET /config/verticals/{vertical}`, `POST /generate-dataset`, `POST /score-run`.
+- Dataset outputs are JSON inside a ZIP (`<dataset_id>.dataset.json`, `<dataset_id>.golden.json`, `manifest.json`).
+- Scoring endpoint still uses JSONL inputs (`golden_dataset.jsonl`, `model_outputs.jsonl`).
+- Tests need updates to align with current JSON dataset format (some tests still assert JSONL shapes).
+
 For each phase:
 1. Paste the **Implementation Prompt** into Copilot.
 2. Review generated code.
@@ -116,7 +124,7 @@ For each phase:
 
 ### Prompt 3.2 – Eval & Golden Builders
 
-> Implement builders to emit `eval_dataset.jsonl` and `golden_dataset.jsonl`.
+> Implement builders to emit `<dataset_id>.dataset.json` and `<dataset_id>.golden.json`.
 
 ### Prompt 3.3 – Tests
 

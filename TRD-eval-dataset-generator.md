@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-The **Eval Dataset Generator** is an internal tool that generates **synthetic, structured evaluation datasets** and corresponding **golden datasets** for multi-turn LLM/agent evaluation across **multiple industry verticals**.
+The **Eval Dataset Generator** is an internal tool that generates **synthetic, structured evaluation datasets** and corresponding **golden datasets** for multi-turn **LLM (large language model)** or agent evaluation across **multiple industry verticals**.
 
 Examples of supported verticals:
 - Commerce / Merchant
@@ -18,9 +18,9 @@ The system is **vertical-agnostic** at the core, and each vertical brings its ow
 - **Variation axes** (constraints / scenario conditions)
 
 The system outputs:
-- **Eval dataset** (`eval_dataset.jsonl`) – user turns + metadata for running evals.
-- **Golden dataset** (`golden_dataset.jsonl`) – ideal conversation + expected actions, key facts, and scoring rules.
-- Optional: **Scored results** (`scored_results.jsonl`) – when combined with external model outputs.
+- **Dataset** (`<dataset_id>.dataset.json`) – user turns + metadata for running evals.
+- **Golden** (`<dataset_id>.golden.json`) – expected response variants and policy decision per conversation.
+- Optional: **Scored results** (`scored_results.jsonl`) – produced by `/score-run` when using legacy JSONL inputs.
 
 **Model execution (LLM/agent inference) is explicitly out of scope** for this system.
 
@@ -160,10 +160,10 @@ Each vertical defines its axes in `axes.yaml`.
      - Generate `N` conversations per (workflow × behaviour-set × axes) combination.
      - For each conversation:
        - `EvalConversation` (user-only turns + metadata).
-       - `GoldenConversation` (full ideal conversation with scoring_rules).
+       - `GoldenExpectation` (expected response variants and policy decision).
    - Return datasets as a ZIP:
-     - `eval_dataset.jsonl`.
-     - `golden_dataset.jsonl`.
+     - `<dataset_id>.dataset.json`.
+     - `<dataset_id>.golden.json`.
      - `manifest.json`.
 
 7. **Schema Override via Upload (FR-7)**
@@ -175,7 +175,7 @@ Each vertical defines its axes in `axes.yaml`.
 
 8. **Scoring Harness Input (FR-8)**
    - Accepts:
-     - `golden_dataset.jsonl`.
+     - `golden_dataset.jsonl` (legacy JSONL format only).
      - `model_outputs.jsonl`.
      - `model_id`.
    - Produces:
@@ -184,12 +184,14 @@ Each vertical defines its axes in `axes.yaml`.
 9. **Frontend UI (FR-9)**
    - React-based UI to:
      - Select `vertical`.
-     - Fetch vertical-specific workflows/behaviours/axes from `/config/verticals/{vertical}`.
+     - Fetch vertical-specific workflows/behaviours/axes from
+       `/config/verticals/{vertical}`.
      - Select workflows and behaviours, set axes values.
      - Set `num_samples_per_combo`, `language_locale`, `channel`.
      - Upload optional schema overrides.
      - Trigger dataset generation and download ZIP.
-     - Upload `golden_dataset.jsonl` + `model_outputs.jsonl` and download scoring results.
+     - Upload `golden_dataset.jsonl` + `model_outputs.jsonl` (legacy scoring) and
+       download scoring results.
      - View JSON config preview for transparency.
      - Manage local presets (saved configs) per vertical via `localStorage`.
 
@@ -227,11 +229,11 @@ See `architecture-diagram.md` for the Mermaid diagram and description.
 
 ## 9. Data & File Artifacts
 
-- `eval_dataset.jsonl`.
-- `golden_dataset.jsonl`.
+- `<dataset_id>.dataset.json`.
+- `<dataset_id>.golden.json`.
 - `manifest.json`.
-- `model_outputs.jsonl` (external producer).
-- `scored_results.jsonl` (produced by scoring engine).
+- `model_outputs.jsonl` (external producer, legacy scoring input).
+- `scored_results.jsonl` (produced by `/score-run`).
 
 All follow the JSON schemas defined in the design.
 
@@ -261,14 +263,14 @@ All follow the JSON schemas defined in the design.
   - `axes_schema` (optional file).
 
 - **Response:** `application/zip`  
-  - `eval_dataset.jsonl`.
-  - `golden_dataset.jsonl`.
+  - `<dataset_id>.dataset.json`.
+  - `<dataset_id>.golden.json`.
   - `manifest.json`.
 
 ### `POST /score-run`
 
 - **Request:** `multipart/form-data`.
-  - `golden_dataset`: file (JSONL).
+  - `golden_dataset`: file (JSONL, legacy scoring format).
   - `model_outputs`: file (JSONL).
   - `model_id`: text.
 
@@ -288,7 +290,7 @@ config/
       workflows.yaml
       behaviours.yaml
       axes.yaml
-      utterances/
+      templates/
         returns_refunds_templates.yaml
         checkout_payments_templates.yaml
         ...
@@ -296,7 +298,7 @@ config/
       workflows.yaml
       behaviours.yaml
       axes.yaml
-      utterances/
+      templates/
         lost_card.yaml
         kyc_update.yaml
         ...

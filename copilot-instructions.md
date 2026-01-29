@@ -1,44 +1,70 @@
 # Copilot instructions for this repo
 
-Purpose
-- Multi‑turn LLM evaluation platform. FastAPI backend evaluates datasets with goldens using exact/semantic/consistency/adherence/hallucination metrics; writes artifacts and reports; React/Vite frontend manages runs and settings.
+## Purpose
 
-Architecture
-- Backend (`backend/`): FastAPI app (`backend/app.py`) routes for datasets, runs, reports, settings. `Orchestrator` (`backend/orchestrator.py`) executes user turns with providers and writes artifacts via `RunArtifactWriter`.
-- Providers (`backend/providers/`): registry loads `.env` (`registry.py`) and resolves `provider:model` (e.g., `openai:gpt-5.1`). Implementations return `ProviderResponse`.
-- Artifacts (`backend/artifacts.py`): stable short paths to avoid Windows MAX_PATH. Results in `results.json`/`results.csv`, per‑turn `conversations/c-<hash>/turn_*.json`, job status `job.json`.
-- Data (`datasets/<vertical>/*.dataset.json|*.golden.json`): `DatasetRepository` loads dataset and golden. Goldens may specify `entry.final_outcome` or top‑level `final_outcome`.
-- Metrics (`backend/metrics*.py`, `conversation_scoring.py`): exact, semantic (Ollama embeddings), plus extra metrics; aggregated per conversation.
-- Coverage (`backend/coverage_builder_v2.py`, `convgen_v2.py`, `array_builder_v2.py`, `coverage_config.py`, `risk_sampler.py`, `commerce_taxonomy.py`): v2 pipeline only.
-- Frontend (`frontend/`): React + Vite + Tailwind UI; Vite proxy targets backend.
+Vertical‑agnostic eval dataset generator. The FastAPI backend builds evaluation
+datasets and golden expectations from YAML config and templates. The React/Vite
+frontend drives generation and scoring uploads.
 
-Core workflows
-- Tests: use VS Code tasks (e.g., “pytest - prompt13”). `backend/tests/conftest.py` adds `backend/` to `sys.path`.
-- Backend dev: `python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000` (task: “Start backend API (uvicorn)”). `.env` at repo root is auto‑loaded.
-- Frontend dev: in `frontend/` run `npm install` then `npm run dev` (backend at http://localhost:8000). See `frontend/vite.config.ts`.
-- CLI: `python -m backend.cli init` to scaffold; `python -m backend.cli run --file configs/sample.run.json [--no-semantic]`; coverage: `python -m backend.cli coverage --combined|--split [--save --overwrite]` (v2 only).
+## Architecture
 
-Conventions and patterns
-- Model spec: `provider:model` (parsed by `Orchestrator.parse_model_spec`).
-- Determinism: temperature 0.0, seed 42; prompt context uses last 5 turns; budgets ~1800 input, 400 completion (see `README.md`).
-- Vertical storage: datasets/runs under `datasets/<vertical>/` and `runs/<vertical>/`; default `INDUSTRY_VERTICAL` in `.env`. Startup migrates legacy root folders.
-- Artifact layout: always use `RunFolderLayout`; conversation dirs are short hashed (`c-<sha>`). Avoid long IDs in paths.
-- Results shape: `results.json` includes run identity, conversation identity (slug/title/domain/behavior/etc), per‑turn metrics/snippets, conversation summary, and `input_tokens_total`/`output_tokens_total`. CSV mirrors this and adds rollups (e.g., risk tier).
-- Metrics selection: run config `metrics` may include `exact`, `semantic`, `consistency`, `adherence`, `hallucination`. Thresholds from `thresholds` (e.g., `semantic`, `hallucination_threshold`) or settings.
-- Embeddings: semantic uses Ollama with `EMBED_MODEL`; quick check `GET /embeddings/test`.
-- Settings: `POST /settings` persists to `.env`; UI persists metric toggles to `configs/metrics.json` read by backend.
+Backend (`backend/app/`): FastAPI routes in `backend/app/main.py`.
+Config loader: `backend/app/config_loader.py` reads
+`config/verticals/<vertical>/{workflows,behaviours,axes}.yaml` and
+`templates/*.yaml`.
+Template engine: `backend/app/template_engine.py` selects and renders templates
+for user/assistant turns.
+Generation: `backend/app/generation.py` builds `ConversationPlan` objects and
+manifests.
+Dataset builders: `backend/app/dataset_builder.py` emits
+`<dataset_id>.dataset.json` and `<dataset_id>.golden.json`.
+Scoring: `backend/app/scoring.py` scores JSONL inputs (legacy format) for
+`/score-run`.
+Frontend (`frontend/`): React + Vite UI with proxy routes in
+`frontend/vite.config.ts`.
 
-Integration points
-- Keys/hosts via `.env`: `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `OLLAMA_HOST`, `EMBED_MODEL`, default models `OLLAMA_MODEL`/`GEMINI_MODEL`/`OPENAI_MODEL`, thresholds `SEMANTIC_THRESHOLD`/`HALLUCINATION_THRESHOLD`.
-- Reports: `backend/reporter.py` renders `backend/templates/report.html.j2`.
+## Core workflows
 
-Pitfalls and gotchas
-- Windows paths: rely on `RunFolderLayout` and hashed conversation dirs; do not embed long conversation IDs in disk paths.
-- Golden mapping: assistant index may map as `2*user_idx+1`, `user_idx+1`, or `user_idx`. Code tries candidates.
-- Semantic scoring can fail if embeddings not available; handle and proceed (metrics entry contains `error`).
+Backend dev: `python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000`.
+Frontend dev: in `frontend/` run `npm install` then `npm run dev` (backend at
+<http://localhost:8000>).
+API endpoints: `GET /health`, `GET /config/verticals/{vertical}`,
+`POST /generate-dataset` (multipart form, returns ZIP with dataset/golden +
+manifest), and `POST /score-run` (JSONL in/out for heuristic scoring).
 
-Key references
-- Orchestrator flow: `backend/orchestrator.py` → `TurnRunner` → per‑turn files → aggregate to `results.json`/`results.csv` and update `job.json`.
-- Providers/config: `backend/providers/registry.py`.
-- Frontend dev: `frontend/README.md`, `frontend/vite.config.ts`.
-- Additional docs: root `README.md`, `backend/README.md`, `configs/README.md`, `UserGuide.md`.
+## Conventions and patterns
+
+Dataset outputs are JSON (not JSONL): `<dataset_id>.dataset.json` and
+`<dataset_id>.golden.json`.
+Dataset JSON contains `dataset_id`, `version`, `metadata`, and `conversations`
+(user‑only turns).
+Golden JSON contains `dataset_id`, `version`, and `entries` with expected
+variants and policy decision.
+Scoring endpoint expects JSONL entries with `expected_actions`, `key_facts`,
+`scoring_rules` (legacy format).
+Templates live in `config/verticals/<vertical>/templates/*.yaml` and may use
+`{variable}` placeholders.
+Conversation IDs use a normalized domain/behavior/axes + hash format.
+
+## Integration points
+
+Vite proxy routes: `/config`, `/generate-dataset`, `/score-run` → backend on
+port 8000. There is no database; file system outputs are streamed as ZIPs for
+download.
+
+## Pitfalls and gotchas
+
+`TemplateEngine.realise_turn` raises if no template matches; ensure templates
+cover workflows/behaviours/axes.
+`/score-run` is not wired to the generated golden JSON format; it expects JSONL
+with explicit scoring fields.
+For deterministic generation, supply `random_seed` and keep `min_turns` and
+`max_turns` stable.
+
+## Key references
+
+Backend entrypoint: `backend/app/main.py`.
+Generation: `backend/app/generation.py`.
+Dataset structure: `backend/app/dataset_builder.py`.
+Config examples: `config/verticals/`.
+Frontend UI: `frontend/src/App.tsx`.
